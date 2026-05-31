@@ -681,64 +681,13 @@ local function autoSkillCheck()
                 local guiKey = tostring(gui):sub(-8) -- pakai suffix unik memory address
                 
                 -- ==============================================================
-                -- BAGIAN A: QTE Lingkaran - Klik semua tombol visible di minigame GUI
-                -- Gunakan isGuiVisible untuk cek parent chain, plus 3 metode klik berbeda
-                -- ==============================================================
-                local function isGuiVisible(obj)
-                    if not obj or not obj:IsA("GuiObject") then return false end
-                    local cur = obj
-                    while cur and cur:IsA("GuiObject") do
-                        if not cur.Visible then return false end
-                        cur = cur.Parent
-                    end
-                    local layer = obj:FindFirstAncestorWhichIsA("LayerCollector")
-                    return not (layer and not layer.Enabled)
-                end
-                
-                for _, btn in ipairs(gui:GetDescendants()) do
-                    if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and isGuiVisible(btn) then
-                        local sz = btn.AbsoluteSize
-                        local pos = btn.AbsolutePosition
-                        if sz.X > 5 and sz.Y > 5 and sz.X < 500 and sz.Y < 500 and pos.X >= 0 and pos.Y >= 0 then
-                            task.spawn(function()
-                                -- Method 1: firesignal
-                                if firesignal then
-                                    pcall(function() btn:Activate() end)
-                                    pcall(function() firesignal(btn.MouseButton1Click) end)
-                                    pcall(function() firesignal(btn.MouseButton1Down) end)
-                                    pcall(function() firesignal(btn.Activated) end)
-                                    return
-                                end
-                                -- Method 2: getconnections
-                                if getconnections then
-                                    pcall(function() btn:Activate() end)
-                                    for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
-                                    for _, c in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() c:Fire() end) end
-                                    for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
-                                    return
-                                end
-                                -- Method 3: VirtualInputManager mouse click (fallback)
-                                pcall(function() btn:Activate() end)
-                                local cx = pos.X + sz.X / 2
-                                local cy = pos.Y + sz.Y / 2
-                                pcall(function()
-                                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
-                                    task.wait(0.01)
-                                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
-                                end)
-                            end)
-                        end
-                    end
-                end
-                
-                -- ==============================================================
-                -- BAGIAN B: QTE Geser/Kaset (Deteksi Jarum Bergerak)
-                -- Cari langsung di semua descendants GUI, tidak perlu temukan "bar" dulu.
-                -- Jarum = elemen paling kurus (X<<Y) yang bergerak.
-                -- Zona = elemen paling kanan yang berbentuk kotak/persegi.
+                -- BAGIAN B: Deteksi Jarum DULU (sebelum klik tombol)
+                -- Jarum = elemen paling kurus (X<<Y, width<25px) yang bergerak.
+                -- Zona = elemen paling kanan berbentuk kotak.
+                -- Jika jarum ditemukan → ini sliding QTE, SKIP klik tombol.
                 -- ==============================================================
                 local needle = nil
-                local minRatio = 0.6 -- jarum harus sangat kurus (X/Y < 0.6)
+                local minRatio = 0.5 -- jarum harus sangat kurus
                 local zoneEl = nil
                 local maxZoneX = -math.huge
                 
@@ -746,43 +695,87 @@ local function autoSkillCheck()
                     if not child:IsA("GuiObject") or not child.Visible then continue end
                     local sz = child.AbsoluteSize
                     if sz.X < 1 or sz.Y < 1 then continue end
-                    
                     local ratio = sz.X / sz.Y
-                    local pos = child.AbsolutePosition
+                    local cpos = child.AbsolutePosition
                     
-                    -- Jarum: sangat kurus dan cukup tinggi
-                    if ratio < minRatio and sz.X < 25 and sz.Y > 15 and pos.X > 0 and pos.Y > 0 then
-                        if ratio < minRatio then
-                            minRatio = ratio
-                            needle = child
-                        end
+                    -- Jarum: sangat kurus (X << Y), lebar < 25px, tinggi > 15px
+                    if ratio < minRatio and sz.X < 25 and sz.Y > 15 and cpos.X > 0 and cpos.Y > 0 then
+                        minRatio = ratio
+                        needle = child
                     end
                     
-                    -- Zona: berbentuk kotak/persegi atau lebih lebar dari tinggi, minimal 20px, paling kanan
-                    if sz.X >= sz.Y * 0.8 and sz.X > 20 and sz.Y > 15 and pos.X > 0 then
-                        if pos.X > maxZoneX then
-                            maxZoneX = pos.X
+                    -- Zona: kotak/persegi, minimal 20x15px, paling kanan
+                    if sz.X >= sz.Y * 0.7 and sz.X > 20 and sz.Y > 15 and cpos.X > 0 then
+                        if cpos.X > maxZoneX then
+                            maxZoneX = cpos.X
                             zoneEl = child
                         end
                     end
                 end
                 
                 if needle and zoneEl and needle ~= zoneEl then
+                    -- === SLIDING BAR QTE (Cassette/Kaset) ===
+                    -- Ada jarum bergerak → tekan Space saat jarum overlap zona
                     local needleX = needle.AbsolutePosition.X
                     local prevX = lastNeedleX[guiKey]
                     lastNeedleX[guiKey] = needleX
                     
-                    -- HANYA tekan space jika jarum BENAR-BENAR BERGERAK (cegah false positive)
-                    local isMoving = prevX and math.abs(needleX - prevX) > 0.5
+                    local isMoving = prevX and math.abs(needleX - prevX) > 0.3
                     
                     if isMoving and not justPressed[guiKey] then
                         local zX = zoneEl.AbsolutePosition.X
                         local zW = zoneEl.AbsoluteSize.X
                         
-                        if needleX >= zX - 8 and needleX <= zX + zW + 8 then
+                        if needleX >= zX - 10 and needleX <= zX + zW + 10 then
                             pressSpace()
                             justPressed[guiKey] = true
                             task.delay(0.3, function() justPressed[guiKey] = false end)
+                        end
+                    end
+                else
+                    -- === CIRCLE QTE (Lingkaran / TV Repair) ===
+                    -- Tidak ada jarum → klik semua tombol yang visible
+                    local function isGuiVisible(obj)
+                        if not obj or not obj:IsA("GuiObject") then return false end
+                        local cur = obj
+                        while cur and cur:IsA("GuiObject") do
+                            if not cur.Visible then return false end
+                            cur = cur.Parent
+                        end
+                        local layer = obj:FindFirstAncestorWhichIsA("LayerCollector")
+                        return not (layer and not layer.Enabled)
+                    end
+                    
+                    for _, btn in ipairs(gui:GetDescendants()) do
+                        if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and isGuiVisible(btn) then
+                            local sz = btn.AbsoluteSize
+                            local bpos = btn.AbsolutePosition
+                            if sz.X > 5 and sz.Y > 5 and sz.X < 500 and sz.Y < 500 and bpos.X >= 0 and bpos.Y >= 0 then
+                                task.spawn(function()
+                                    if firesignal then
+                                        pcall(function() btn:Activate() end)
+                                        pcall(function() firesignal(btn.MouseButton1Click) end)
+                                        pcall(function() firesignal(btn.MouseButton1Down) end)
+                                        pcall(function() firesignal(btn.Activated) end)
+                                        return
+                                    end
+                                    if getconnections then
+                                        pcall(function() btn:Activate() end)
+                                        for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
+                                        for _, c in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() c:Fire() end) end
+                                        for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
+                                        return
+                                    end
+                                    pcall(function() btn:Activate() end)
+                                    local cx = bpos.X + sz.X / 2
+                                    local cy = bpos.Y + sz.Y / 2
+                                    pcall(function()
+                                        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                                        task.wait(0.01)
+                                        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                                    end)
+                                end)
+                            end
                         end
                     end
                 end
@@ -1166,28 +1159,6 @@ local function findKillerRoot()
                 if root then return root end
             end
         end
-    end
-    
-    -- 4. FALLBACK TERAKHIR: Saat downed, killer = player paling DEKAT dengan kita
-    -- (Killer biasanya ada di dekat player yang baru dijatuhkan)
-    local myChar = LocalPlayer.Character
-    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    if myRoot then
-        local closestDist = 40 -- maksimal 40 stud
-        local closestRoot = nil
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
-                if pRoot then
-                    local dist = (pRoot.Position - myRoot.Position).Magnitude
-                    if dist < closestDist then
-                        closestDist = dist
-                        closestRoot = pRoot
-                    end
-                end
-            end
-        end
-        if closestRoot then return closestRoot end
     end
     
     return nil

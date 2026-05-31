@@ -876,10 +876,10 @@ CreateButton(FarmCard, "🔍 Debug GUI Scanner", UDim2.new(0, 10, 0, 110), UDim2
     Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 10)
     
     local titleLbl = Instance.new("TextLabel")
-    titleLbl.Size = UDim2.new(1, -50, 1, 0)
+    titleLbl.Size = UDim2.new(1, -90, 1, 0)
     titleLbl.Position = UDim2.new(0, 12, 0, 0)
     titleLbl.BackgroundTransparency = 1
-    titleLbl.Text = "🔍 Debug GUI Scanner - Aktifkan cassette QTE lalu Scan"
+    titleLbl.Text = "🔍 Debug Scanner - Scan saat cassette aktif"
     titleLbl.TextColor3 = Color3.fromRGB(200, 220, 255)
     titleLbl.TextSize = 12
     titleLbl.Font = Enum.Font.GothamBold
@@ -887,15 +887,51 @@ CreateButton(FarmCard, "🔍 Debug GUI Scanner", UDim2.new(0, 10, 0, 110), UDim2
     titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
     titleLbl.Parent = titleBar
     
+    -- Tombol Minimize
+    local isMinimized = false
+    local fullHeight = UDim2.new(0, 480, 0, 420)
+    local miniHeight = UDim2.new(0, 480, 0, 44)
+    
+    local minBtn = Instance.new("TextButton")
+    minBtn.Size = UDim2.new(0, 32, 0, 32)
+    minBtn.Position = UDim2.new(1, -78, 0, 4)
+    minBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
+    minBtn.Text = "—"
+    minBtn.TextColor3 = Color3.fromRGB(220, 220, 255)
+    minBtn.TextSize = 14
+    minBtn.Font = Enum.Font.GothamBold
+    minBtn.BorderSizePixel = 0
+    minBtn.Parent = titleBar
+    Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
+    
+    minBtn.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        if isMinimized then
+            panel.Size = miniHeight
+            scroll.Visible = false
+            scanBtn.Visible = false
+            copyBtn.Visible = false
+            minBtn.Text = "□"
+        else
+            panel.Size = fullHeight
+            scroll.Visible = true
+            scanBtn.Visible = true
+            copyBtn.Visible = true
+            minBtn.Text = "—"
+        end
+    end)
+    
     local closeX = Instance.new("TextButton")
-    closeX.Size = UDim2.new(0, 35, 0, 35)
-    closeX.Position = UDim2.new(1, -38, 0, 3)
-    closeX.BackgroundTransparency = 1
+    closeX.Size = UDim2.new(0, 32, 0, 32)
+    closeX.Position = UDim2.new(1, -40, 0, 4)
+    closeX.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
     closeX.Text = "✕"
-    closeX.TextColor3 = Color3.fromRGB(180, 180, 180)
-    closeX.TextSize = 16
+    closeX.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeX.TextSize = 14
     closeX.Font = Enum.Font.GothamBold
+    closeX.BorderSizePixel = 0
     closeX.Parent = titleBar
+    Instance.new("UICorner", closeX).CornerRadius = UDim.new(0, 6)
     closeX.MouseButton1Click:Connect(function()
         debugScanGui:Destroy()
         debugScanGui = nil

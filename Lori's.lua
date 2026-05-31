@@ -671,24 +671,16 @@ local function autoSkillCheck()
             for _, gui in ipairs(playerGui:GetChildren()) do
                 if not gui:IsA("ScreenGui") or not gui.Enabled or gui.Name == "LoriNightmareUltimateHub" then continue end
                 
+                -- Deteksi GUI minigame berdasarkan nama (cepat, tanpa scan descendants)
                 local gName = gui.Name:lower()
-                
-                -- Cek apakah GUI mengandung tombol/teks "SKILL CHECK" (untuk kaset)
-                local function guiHasSkillCheck(g)
-                    for _, d in ipairs(g:GetDescendants()) do
-                        if d.Visible and (d:IsA("TextButton") or d:IsA("TextLabel") or d:IsA("ImageButton")) then
-                            local t = ""
-                            pcall(function() t = d.Text:lower() end)
-                            if t:find("skill") or t:find("check") then return true end
-                        end
-                    end
-                    return false
-                end
-                
-                local isMinigameGui = gName:find("repair") or gName:find("tv") or gName:find("skill") or gName:find("qte") or gName:find("kaset") or gName:find("tape") or gName:find("cassette") or gName:find("minigame") or gName:find("interact") or gName:find("television") or
+                local isMinigameGui = gName:find("repair") or gName:find("tv") or
+                   gName:find("skill") or gName:find("qte") or gName:find("kaset") or
+                   gName:find("tape") or gName:find("cassette") or gName:find("minigame") or
+                   gName:find("interact") or gName:find("television") or
+                   -- Cek elemen khas (sekali saja, lebih ringan dari scan teks)
                    gui:FindFirstChild("Circle", true) or gui:FindFirstChild("Ball", true) or
-                   gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or
-                   guiHasSkillCheck(gui)
+                   gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Coin", true) or
+                   gui:FindFirstChild("GoldNoCoin", true)
                 
                 if not isMinigameGui then continue end
                 
@@ -998,8 +990,8 @@ CreateButton(FarmCard, "🔍 Debug GUI Scanner", UDim2.new(0, 10, 0, 110), UDim2
     
     local function addLog(line)
         table.insert(logLines, line)
-        -- Batasi 300 baris agar tidak terlalu berat
-        if #logLines > 300 then
+        -- Batasi 2000 baris agar tidak terlalu berat
+        if #logLines > 2000 then
             table.remove(logLines, 1)
         end
         resultText.Text = table.concat(logLines, "\n")

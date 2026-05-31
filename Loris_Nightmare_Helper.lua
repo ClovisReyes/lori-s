@@ -792,8 +792,32 @@ local function autoSkillCheck()
                         end
                     end)
 
-                    local hasPointer = gui:FindFirstChild("Pointer", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Indicator", true)
-                    local hasZone = gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("GreenBar", true) or gui:FindFirstChild("PerfectZone", true)
+                    -- Deteksi Pointer (Jarum/Garis Merah) & Zone (Target Kaset/Area Hijau) menggunakan pencarian kata kunci rekursif
+                    local hasPointer = nil
+                    local hasZone = nil
+                    
+                    local pointerKeywords = {"pointer", "needle", "indicator", "line", "redline", "slider", "jarum", "penunjuk"}
+                    local zoneKeywords = {"zone", "success", "target", "greenbar", "perfectzone", "kaset", "tape", "cassette", "icon", "box"}
+                    
+                    for _, child in ipairs(gui:GetDescendants()) do
+                        local cName = child.Name:lower()
+                        if not hasPointer then
+                            for _, kw in ipairs(pointerKeywords) do
+                                if cName:find(kw) then
+                                    hasPointer = child
+                                    break
+                                end
+                            end
+                        end
+                        if not hasZone then
+                            for _, kw in ipairs(zoneKeywords) do
+                                if cName:find(kw) then
+                                    hasZone = child
+                                    break
+                                end
+                            end
+                        end
+                    end
                     
                     if hasPointer and hasZone then
                         -- Cek delay pemunculan agar tidak fail di frame pertama
@@ -812,8 +836,17 @@ local function autoSkillCheck()
                                 local zPos = hasZone.AbsolutePosition
                                 local zSize = hasZone.AbsoluteSize
                                 
-                                -- 1. Deteksi apakah ini QTE Rotasi (Sudut/Lingkar) atau QTE Geser (Sliding)
-                                local isRotationQTE = (pPos - zPos).Magnitude < 15 or hasPointer.Rotation ~= 0 or hasZone.Rotation ~= 0
+                                -- 1. Deteksi orientasi bar: Horizontal atau Vertikal
+                                local isHorizontal = true
+                                local parentBar = hasPointer.Parent
+                                if parentBar and parentBar:IsA("GuiObject") then
+                                    if parentBar.AbsoluteSize.Y > parentBar.AbsoluteSize.X then
+                                        isHorizontal = false
+                                    end
+                                end
+                                
+                                -- 2. Deteksi apakah ini QTE Rotasi (Sudut) khusus jika nama GUI eksplisit mengandung rotasi/circle/dial
+                                local isRotationQTE = gName:find("circle") or gName:find("dial") or gName:find("rotat") or gName:find("ring")
                                 
                                 if isRotationQTE then
                                     -- QTE Rotasi: Bandingkan sudut rotasi (derajat)
@@ -834,19 +867,33 @@ local function autoSkillCheck()
                                         task.wait(0.12)
                                     end
                                 else
-                                    -- QTE Geser: Bandingkan posisi fisik X/Y di layar
-                                    local hOverlap = pPos.X >= (zPos.X - 5) and pPos.X <= (zPos.X + zSize.X + 5)
-                                    local vOverlap = pPos.Y >= (zPos.Y - 5) and pPos.Y <= (zPos.Y + zSize.Y + 5)
-                                    
-                                    if hOverlap and vOverlap then
-                                        task.spawn(function()
-                                            pcall(function()
-                                                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                                                task.wait(0.01)
-                                                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                    -- QTE Geser (Sliding Bar): Bandingkan overlap satu arah untuk mencegah kegagalan Y-offset
+                                    if isHorizontal then
+                                        -- Cek overlap horisontal (X-axis) dengan toleransi 3 pixel
+                                        local hOverlap = pPos.X >= (zPos.X - 3) and pPos.X <= (zPos.X + zSize.X + 3)
+                                        if hOverlap then
+                                            task.spawn(function()
+                                                pcall(function()
+                                                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                                                    task.wait(0.01)
+                                                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                                end)
                                             end)
-                                        end)
-                                        task.wait(0.12)
+                                            task.wait(0.15)
+                                        end
+                                    else
+                                        -- Cek overlap vertikal (Y-axis) dengan toleransi 3 pixel
+                                        local vOverlap = pPos.Y >= (zPos.Y - 3) and pPos.Y <= (zPos.Y + zSize.Y + 3)
+                                        if vOverlap then
+                                            task.spawn(function()
+                                                pcall(function()
+                                                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                                                    task.wait(0.01)
+                                                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                                end)
+                                            end)
+                                            task.wait(0.15)
+                                        end
                                     end
                                 end
                             end

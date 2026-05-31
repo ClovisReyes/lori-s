@@ -137,33 +137,57 @@ if getcustomasset then
 end
 
 -- Helper: Cek Apakah Player Adalah Killer (The Nightmare)
+-- PENTING: Default ke Survivor (Hijau) jika tidak yakin — mencegah false-positive
 local function checkIfKiller(player)
     if not player then return false end
     
-    -- 1. Cek Tim Resmi (Roblox Teams)
+    -- 1. PRIORITAS UTAMA: Cek Tim Roblox
+    -- Di Lori's Nightmare: Tim Survivor = "Children", Tim Killer = "Nightmare"
     if player.Team then
         local tName = player.Team.Name:lower()
-        -- Jika nama tim mengandung unsur survivor/lobby/spectator, dia BUKAN killer
-        if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("innocent") or tName:find("good") or tName:find("lobby") or tName:find("spectator") or tName:find("choosing") or tName:find("loading") or tName:find("waiting") or tName:find("surv") or tName:find("kid") then
+        
+        -- Jika nama tim jelas survivor → pasti Hijau
+        if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("innocent") or tName:find("lobby") or tName:find("spectator") or tName:find("waiting") then
             return false
         end
-        -- Jika nama tim mengandung unsur killer/nightmare
-        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("hunter") or tName:find("beast") or tName:find("bad") or tName:find("enemy") or tName:find("demon") then
+        
+        -- Jika nama tim jelas killer → pasti Merah
+        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") then
             return true
         end
+        
+        -- Tim ada tapi namanya ambigu: bandingkan dengan tim local player
+        -- Jika local player di tim "Children" dan player ini di tim yang BERBEDA → dia killer
+        if LocalPlayer.Team then
+            local lpTeam = LocalPlayer.Team.Name:lower()
+            local pTeam = tName
+            
+            if (lpTeam:find("child") or lpTeam:find("survivor")) then
+                -- Local player adalah survivor. Jika player lain di tim yang beda → killer
+                if lpTeam ~= pTeam and not pTeam:find("lobby") and not pTeam:find("spectator") and not pTeam:find("waiting") then
+                    return true
+                end
+            end
+        end
+        
+        -- Punya tim tapi tidak cocok pola apapun → anggap survivor (aman)
+        return false
     end
     
-    -- 2. Cek Atribut khusus pada Player atau Character
+    -- 2. TIDAK ADA TIM: Cek Atribut Role langsung (konservatif)
     local char = player.Character
     for _, obj in ipairs({player, char}) do
         if obj then
-            for _, attr in ipairs({"Role", "Team", "Class", "Type", "Status", "Character", "SelectedCharacter"}) do
+            for _, attr in ipairs({"Role", "IsKiller", "IsNightmare"}) do
                 local val = obj:GetAttribute(attr)
                 if val then
                     local s = tostring(val):lower()
-                    if s:find("nightmare") or s:find("killer") or s:find("monster") or s:find("hunter") or s:find("beast") or s:find("demon") or s:find("slasher") then
+                    -- Hanya return true jika nama atributnya spesifik dan jelas
+                    if attr == "IsKiller" or attr == "IsNightmare" then
+                        if val == true then return true end
+                    elseif s == "nightmare" or s == "killer" or s == "monster" then
                         return true
-                    elseif s:find("child") or s:find("survivor") or s:find("citizen") or s:find("innocent") or s:find("good") or s:find("player") then
+                    elseif s == "child" or s == "survivor" or s == "children" then
                         return false
                     end
                 end
@@ -171,77 +195,19 @@ local function checkIfKiller(player)
         end
     end
     
-    -- 3. Cek Objek Value di dalam Player / Character (e.g. StringValue "Role" atau "Team")
-    for _, obj in ipairs({player, char}) do
-        if obj then
-            for _, child in ipairs(obj:GetChildren()) do
-                if child:IsA("StringValue") or child:IsA("BoolValue") or child:IsA("ValueObject") then
-                    local cName = child.Name:lower()
-                    if cName:find("role") or cName:find("team") or cName:find("class") or cName:find("type") or cName:find("status") then
-                        local val = tostring(child.Value):lower()
-                        if val:find("nightmare") or val:find("killer") or val:find("monster") or val:find("hunter") or val:find("slasher") then
-                            return true
-                        elseif val:find("child") or val:find("survivor") or val:find("citizen") or val:find("innocent") then
-                            return false
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- 4. Cek Nama Model Karakter (Nama Monster: Nightmare, Carnivore, Phantom, Tarantula)
+    -- 3. Cek Nama Model Karakter (nama monster spesifik Lori's Nightmare)
     if char then
         local cName = char.Name:lower()
-        if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("monster") or cName:find("killer") then
-            return true
-        end
-        
-        -- 5. Cek Red Stain atau Sinar Merah Khas Killer
-        for _, d in ipairs(char:GetDescendants()) do
-            if d:IsA("Light") or d:IsA("PointLight") or d:IsA("SpotLight") or d:IsA("SurfaceLight") then
-                -- Cek warna merah (Red dominan, Green & Blue sangat rendah)
-                if d.Color.R > 0.6 and d.Color.G < 0.4 and d.Color.B < 0.4 then
-                    return true
-                end
-            end
-            if d:IsA("BasePart") and (d.Name:lower():find("redstain") or d.Name:lower():find("stain") or d.Name:lower():find("killerlight") or d.Name:lower():find("monsterlight")) then
-                return true
-            end
-        end
-        
-        -- 6. Cek Senjata / Alat Serang (Held Tools)
-        for _, item in ipairs(char:GetChildren()) do
-            if item:IsA("Tool") or item:IsA("Weapon") then
-                local iName = item.Name:lower()
-                if iName:find("knife") or iName:find("weapon") or iName:find("claw") or iName:find("scythe") or iName:find("sword") or iName:find("hit") or iName:find("kill") or iName:find("attack") or iName:find("nightmare") then
-                    return true
-                end
-            end
-        end
-        
-        -- 7. Karakteristik Fisik (Killer berukuran raksasa atau HipHeight tinggi)
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hrp and hum then
-            if hrp.Size.Y > 2.3 or hum.HipHeight > 1.7 or hum.MaxHealth > 100 then
-                return true
-            end
-        end
-    end
-    
-    -- 8. Fallback: Jika local player ada tim "Children", dan player ini ada tim lain yang bukan Lobby/Spectator
-    if LocalPlayer.Team and player.Team then
-        local lpTeam = LocalPlayer.Team.Name:lower()
-        local pTeam = player.Team.Name:lower()
-        if (lpTeam:find("child") or lpTeam:find("survivor")) and 
-           not (pTeam:find("child") or pTeam:find("survivor") or pTeam:find("lobby") or pTeam:find("spectator")) then
+        -- Hanya match nama monster yang sudah dikonfirmasi dari game ini
+        if cName == "nightmare" or cName == "carnivore" or cName == "phantom" or cName == "tarantula" then
             return true
         end
     end
     
+    -- 4. DEFAULT: Anggap Survivor (Hijau) jika tidak ada bukti kuat dia adalah killer
     return false
 end
+
 
 -- Helper: Cek Apakah TV Sudah Selesai Diperbaiki
 local function isTVCompleted(tvPart)
@@ -1343,8 +1309,8 @@ local function autoFollowKillerLoop()
             local root = char and char:FindFirstChild("HumanoidRootPart")
             
             if root and killerRoot then
-                -- Teleportasikan 3 stud di atas dan 2 stud di belakang Killer (Sangat stabil & anti-stuck)
-                root.CFrame = killerRoot.CFrame * CFrame.new(0, 3, 2)
+                -- Teleportasikan ke belakang Killer di permukaan tanah (Y rendah agar tidak ngambang)
+                root.CFrame = killerRoot.CFrame * CFrame.new(0, -2.5, 2)
             end
         end
     end

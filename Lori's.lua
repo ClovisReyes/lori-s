@@ -1387,6 +1387,37 @@ local function isPlayerKnocked()
     return false
 end
 
+-- Helper: Cek apakah player adalah Killer/Nightmare
+-- Data tim dari game: Survivors = "Children", Killers = "Killers"
+-- Nama karakter killer: Nightmare, Carnivore, Tarantula (Spider), Phantom (Spectre)
+local function checkIfKiller(p)
+    -- 1. Cek nama tim
+    if p.Team then
+        local tName = p.Team.Name:lower()
+        if tName:find("killer") or tName:find("nightmare") or tName:find("monster") then
+            return true
+        end
+        if tName:find("child") or tName:find("survivor") or tName:find("human") then
+            return false
+        end
+    end
+    -- 2. Cek atribut game
+    if p:GetAttribute("IsKiller") == true or p:GetAttribute("IsNightmare") == true then
+        return true
+    end
+    -- 3. Cek nama karakter (dari debug scan game ini)
+    local char = p.Character
+    if char then
+        local cName = char.Name:lower()
+        if cName:find("nightmare") or cName:find("carnivore") or
+           cName:find("tarantula") or cName:find("spider") or
+           cName:find("phantom") or cName:find("spectre") then
+            return true
+        end
+    end
+    return false
+end
+
 -- Helper: Cari Root Part Milik Killer (Mendukung Player & NPC/Bot Monster di Workspace)
 local function findKillerRoot()
     -- 1. Cari Killer sebagai Player (gunakan checkIfKiller)

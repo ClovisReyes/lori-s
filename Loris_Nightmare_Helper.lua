@@ -731,18 +731,45 @@ local function autoSkillCheck()
                             local zPos = hasZone.AbsolutePosition
                             local zSize = hasZone.AbsoluteSize
                             
-                            local hOverlap = pPos.X >= (zPos.X - 5) and pPos.X <= (zPos.X + zSize.X + 5)
-                            local vOverlap = pPos.Y >= (zPos.Y - 5) and pPos.Y <= (zPos.Y + zSize.Y + 5)
+                            -- 1. Deteksi apakah ini QTE Rotasi (Sudut/Lingkar) atau QTE Geser (Sliding)
+                            -- Jika posisi awal jarum dan zona sangat dekat, ini adalah dial bulat/berputar.
+                            local isRotationQTE = (pPos - zPos).Magnitude < 15
                             
-                            if hOverlap or vOverlap then
-                                task.spawn(function()
-                                    pcall(function()
-                                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                                        task.wait(0.01)
-                                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                            if isRotationQTE then
+                                -- QTE Rotasi: Bandingkan sudut rotasi (derajat)
+                                local pRot = hasPointer.Rotation % 360
+                                local zRot = hasZone.Rotation % 360
+                                
+                                -- Hitung selisih sudut yang dinormalisasi (-180 s.d 180)
+                                local diff = (pRot - zRot) % 360
+                                if diff > 180 then diff = diff - 360 end
+                                
+                                -- Zona sukses kaset biasanya berada di kisaran sudut -5 s.d 25 derajat pasca alignment
+                                if diff >= -5 and diff <= 25 then
+                                    task.spawn(function()
+                                        pcall(function()
+                                            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                                            task.wait(0.01)
+                                            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                        end)
                                     end)
-                                end)
-                                task.wait(0.12)
+                                    task.wait(0.12)
+                                end
+                            else
+                                -- QTE Geser: Bandingkan posisi fisik X/Y di layar
+                                local hOverlap = pPos.X >= (zPos.X - 5) and pPos.X <= (zPos.X + zSize.X + 5)
+                                local vOverlap = pPos.Y >= (zPos.Y - 5) and pPos.Y <= (zPos.Y + zSize.Y + 5)
+                                
+                                if hOverlap or vOverlap then
+                                    task.spawn(function()
+                                        pcall(function()
+                                            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                                            task.wait(0.01)
+                                            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                        end)
+                                    end)
+                                    task.wait(0.12)
+                                end
                             end
                         end
                     else
@@ -1113,13 +1140,45 @@ local function isPlayerKnocked()
     return false
 end
 
--- Helper: Cari Player Killer
-local function findKillerPlayer()
+-- Helper: Cari Root Part Milik Killer (Mendukung Player & NPC/Bot Monster di Workspace)
+local function findKillerRoot()
+    -- 1. Cari Killer sebagai Player
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and checkIfKiller(p) then
-            return p
+            local char = p.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root then
+                return root
+            end
         end
     end
+    
+    -- 2. Cari Killer sebagai NPC/Bot di tingkat atas Workspace
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+            local oName = obj.Name:lower()
+            if oName:find("nightmare") or oName:find("killer") or oName:find("monster") or obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") then
+                local root = obj:FindFirstChild("HumanoidRootPart")
+                if root then
+                    return root
+                end
+            end
+        end
+    end
+    
+    -- 3. Fallback: Cari di seluruh Workspace descendants (jika monster ditaruh di dalam sub-folder map)
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+            local oName = obj.Name:lower()
+            if oName:find("nightmare") or oName:find("killer") or obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") then
+                local root = obj:FindFirstChild("HumanoidRootPart")
+                if root then
+                    return root
+                end
+            end
+        end
+    end
+    
     return nil
 end
 
@@ -1127,17 +1186,15 @@ end
 local isAutoFollowKiller = false
 local function autoFollowKillerLoop()
     while isAutoFollowKiller do
-        task.wait(0.1)
+        task.wait(0.08) -- Perbarui sedikit lebih cepat untuk pergerakan halus
         if isPlayerKnocked() then
-            local killer = findKillerPlayer()
-            local killerChar = killer and killer.Character
-            local killerRoot = killerChar and killerChar:FindFirstChild("HumanoidRootPart")
-            
+            local killerRoot = findKillerRoot()
             local char = LocalPlayer.Character
             local root = char and char:FindFirstChild("HumanoidRootPart")
             
             if root and killerRoot then
-                root.CFrame = killerRoot.CFrame + Vector3.new(0, 3, 0)
+                -- Teleportasikan 3 stud di atas dan 2 stud di belakang Killer (Sangat stabil & anti-stuck)
+                root.CFrame = killerRoot.CFrame * CFrame.new(0, 3, 2)
             end
         end
     end

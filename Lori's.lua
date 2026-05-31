@@ -960,7 +960,7 @@ CreateButton(FarmCard, "🔍 Debug GUI Scanner", UDim2.new(0, 10, 0, 110), UDim2
     resultText.TextYAlignment = Enum.TextYAlignment.Top
     resultText.TextWrapped = true
     resultText.AutomaticSize = Enum.AutomaticSize.Y
-    resultText.Text = "Tekan  Scan  saat cassette/TV minigame aktif di layar game.\nHasil akan muncul di sini."
+    resultText.Text = "Tekan  ▶ Mulai Rekam  lalu lakukan repair cassette/TV di game.\nLog perubahan GUI akan muncul di sini secara realtime."
     resultText.Parent = scroll
     
     -- Tombol bawah
@@ -968,7 +968,7 @@ CreateButton(FarmCard, "🔍 Debug GUI Scanner", UDim2.new(0, 10, 0, 110), UDim2
     scanBtn.Size = UDim2.new(0.47, 0, 0, 32)
     scanBtn.Position = UDim2.new(0, 10, 1, -38)
     scanBtn.BackgroundColor3 = Color3.fromRGB(40, 100, 200)
-    scanBtn.Text = "🔍  Scan Sekarang"
+    scanBtn.Text = "▶  Mulai Rekam"
     scanBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     scanBtn.TextSize = 12
     scanBtn.Font = Enum.Font.GothamBold
@@ -988,61 +988,133 @@ CreateButton(FarmCard, "🔍 Debug GUI Scanner", UDim2.new(0, 10, 0, 110), UDim2
     copyBtn.Parent = panel
     Instance.new("UICorner", copyBtn).CornerRadius = UDim.new(0, 6)
     
-    local scanData = ""
+    local isRecording = false
+    local logLines = {}
+    local startTime = 0
+    
+    local function getTs()
+        return string.format("[+%.1fs]", os.clock() - startTime)
+    end
+    
+    local function addLog(line)
+        table.insert(logLines, line)
+        -- Batasi 300 baris agar tidak terlalu berat
+        if #logLines > 300 then
+            table.remove(logLines, 1)
+        end
+        resultText.Text = table.concat(logLines, "\n")
+        task.wait()
+        scroll.CanvasSize = UDim2.new(0, 0, 0, resultText.AbsoluteSize.Y + 15)
+        -- Auto scroll ke bawah
+        scroll.CanvasPosition = Vector2.new(0, math.max(0, resultText.AbsoluteSize.Y - scroll.AbsoluteSize.Y + 15))
+    end
     
     scanBtn.MouseButton1Click:Connect(function()
-        local lines = {}
-        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-        if not playerGui then
-            resultText.Text = "ERROR: PlayerGui tidak ditemukan!"
+        if isRecording then
+            -- STOP
+            isRecording = false
+            scanBtn.Text = "▶  Mulai Rekam"
+            scanBtn.BackgroundColor3 = Color3.fromRGB(40, 100, 200)
+            addLog(getTs() .. " ⏹ REKAM DIHENTIKAN.")
             return
         end
         
-        local found = false
-        for _, gui in ipairs(playerGui:GetChildren()) do
-            if gui:IsA("ScreenGui") and gui.Enabled
-               and gui.Name ~= "LoriNightmareUltimateHub"
-               and gui.Name ~= "DebugScanner" then
-                found = true
-                table.insert(lines, "====== GUI: [" .. gui.Name .. "] ======")
-                for _, d in ipairs(gui:GetDescendants()) do
-                    if d:IsA("GuiObject") then
-                        local t = ""
-                        pcall(function() t = d.Text end)
-                        local vis = d.Visible and "V" or "H"
-                        local sz = d.AbsoluteSize
-                        local pos = d.AbsolutePosition
-                        table.insert(lines, string.format(
-                            "[%s] %s | Name=%s | Text='%s' | Size=%.0fx%.0f | Pos=%.0f,%.0f",
-                            vis, d.ClassName, d.Name, t, sz.X, sz.Y, pos.X, pos.Y
-                        ))
+        -- START
+        isRecording = true
+        logLines = {}
+        startTime = os.clock()
+        scanBtn.Text = "⏹  Stop Rekam"
+        scanBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+        addLog("[+0.0s] ▶ MULAI REKAM — lakukan repair/minigame sekarang...")
+        
+        task.spawn(function()
+            local knownGuis = {}     -- GUI name → true
+            local elemVis = {}       -- GUI name → { elemKey → visible bool }
+            
+            while isRecording do
+                task.wait(0.3)
+                if not isRecording then break end
+                
+                local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+                if not playerGui then continue end
+                
+                local currentGuis = {}
+                
+                for _, gui in ipairs(playerGui:GetChildren()) do
+                    if not gui:IsA("ScreenGui") or not gui.Enabled then continue end
+                    if gui.Name == "LoriNightmareUltimateHub" or gui.Name == "DebugScanner" then continue end
+                    
+                    local gName = gui.Name
+                    currentGuis[gName] = true
+                    
+                    -- GUI BARU MUNCUL
+                    if not knownGuis[gName] then
+                        knownGuis[gName] = true
+                        elemVis[gName] = {}
+                        addLog(getTs() .. " 🆕 GUI MUNCUL: [" .. gName .. "]")
+                        -- Log semua elemen visible
+                        for _, d in ipairs(gui:GetDescendants()) do
+                            if d:IsA("GuiObject") then
+                                local t = ""
+                                pcall(function() t = d.Text end)
+                                local vis = d.Visible
+                                local sz = d.AbsoluteSize
+                                local pos = d.AbsolutePosition
+                                local key = d.ClassName .. "_" .. d.Name
+                                elemVis[gName][key] = vis
+                                if vis then
+                                    addLog(string.format("   [V] %s | %s | '%s' | %.0fx%.0f | Pos=%.0f,%.0f",
+                                        d.ClassName, d.Name, t, sz.X, sz.Y, pos.X, pos.Y))
+                                end
+                            end
+                        end
+                    else
+                        -- GUI SUDAH DIKENAL — cek perubahan visibility
+                        if not elemVis[gName] then elemVis[gName] = {} end
+                        for _, d in ipairs(gui:GetDescendants()) do
+                            if d:IsA("GuiObject") then
+                                local key = d.ClassName .. "_" .. d.Name
+                                local nowVis = d.Visible
+                                local prevVis = elemVis[gName][key]
+                                
+                                if prevVis ~= nowVis then
+                                    elemVis[gName][key] = nowVis
+                                    local t = ""
+                                    pcall(function() t = d.Text end)
+                                    local sz = d.AbsoluteSize
+                                    local pos = d.AbsolutePosition
+                                    if nowVis then
+                                        addLog(string.format("%s 👁 MUNCUL [%s] %s | %s | '%s' | %.0fx%.0f | Pos=%.0f,%.0f",
+                                            getTs(), gName, d.ClassName, d.Name, t, sz.X, sz.Y, pos.X, pos.Y))
+                                    else
+                                        addLog(string.format("%s 🙈 HILANG [%s] %s | %s",
+                                            getTs(), gName, d.ClassName, d.Name))
+                                    end
+                                end
+                            end
+                        end
                     end
                 end
-                table.insert(lines, "")
+                
+                -- CEK GUI YANG MENGHILANG
+                for gName in pairs(knownGuis) do
+                    if not currentGuis[gName] then
+                        knownGuis[gName] = nil
+                        elemVis[gName] = nil
+                        addLog(getTs() .. " ❌ GUI HILANG: [" .. gName .. "]")
+                    end
+                end
             end
-        end
-        
-        if not found then
-            scanData = "Tidak ada GUI aktif selain hub.\nBuka cassette/TV repair di game dulu!"
-        else
-            scanData = table.concat(lines, "\n")
-        end
-        
-        resultText.Text = scanData
-        task.wait()
-        scroll.CanvasSize = UDim2.new(0, 0, 0, resultText.AbsoluteSize.Y + 15)
-        scanBtn.Text = "✅  Scan Selesai!"
-        task.delay(1.5, function()
-            if scanBtn and scanBtn.Parent then scanBtn.Text = "🔍  Scan Sekarang" end
         end)
     end)
     
     copyBtn.MouseButton1Click:Connect(function()
+        local scanData = table.concat(logLines, "\n")
         if scanData ~= "" then
             pcall(function() setclipboard(scanData) end)
             copyBtn.Text = "✅  Tersalin!"
         else
-            copyBtn.Text = "⚠  Scan dulu!"
+            copyBtn.Text = "⚠  Rekam dulu!"
         end
         task.delay(1.5, function()
             if copyBtn and copyBtn.Parent then copyBtn.Text = "📋  Salin ke Clipboard" end

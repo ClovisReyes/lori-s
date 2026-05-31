@@ -681,27 +681,27 @@ local function autoSkillCheck()
                 local guiKey = tostring(gui):sub(-8) -- pakai suffix unik memory address
                 
                 -- ==============================================================
-                -- BAGIAN A: QTE Lingkaran (Klik Tombol Bulat / Circle Click)
+                -- BAGIAN A: QTE Lingkaran (Klik Semua Tombol di Minigame GUI)
+                -- Klik SEMUA ImageButton/TextButton yang visible & ukuran wajar.
+                -- Tidak perlu filter nama karena GUI sudah dipastikan adalah minigame.
                 -- ==============================================================
                 for _, btn in ipairs(gui:GetDescendants()) do
                     if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and btn.Visible then
-                        local bName = btn.Name:lower()
-                        if bName:find("circle") or bName:find("ball") or bName:find("click") or bName:find("tap") or bName:find("node") or bName:find("target") or bName:find("ring") then
-                            local sz = btn.AbsoluteSize
-                            if sz.X > 10 and sz.Y > 10 then
-                                task.spawn(function()
-                                    if getconnections then
-                                        pcall(function() btn:Activate() end)
-                                        for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
-                                        for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
-                                    elseif firesignal then
-                                        pcall(function() btn:Activate() end)
-                                        pcall(function() firesignal(btn.MouseButton1Click) end)
-                                    else
-                                        pcall(function() btn:Activate() end)
-                                    end
-                                end)
-                            end
+                        local sz = btn.AbsoluteSize
+                        -- Klik tombol yang ukurannya wajar (bukan terlalu kecil/terlalu besar)
+                        if sz.X > 10 and sz.Y > 10 and sz.X < 500 and sz.Y < 500 then
+                            task.spawn(function()
+                                if getconnections then
+                                    pcall(function() btn:Activate() end)
+                                    for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
+                                    for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
+                                elseif firesignal then
+                                    pcall(function() btn:Activate() end)
+                                    pcall(function() firesignal(btn.MouseButton1Click) end)
+                                else
+                                    pcall(function() btn:Activate() end)
+                                end
+                            end)
                         end
                     end
                 end
@@ -1186,27 +1186,13 @@ local function autoFollowKillerLoop()
             local root = char and char:FindFirstChild("HumanoidRootPart")
             
             if root and killerRoot then
+                -- Posisi downed: di samping killer di level tanah.
+                -- HumanoidRootPart killer berada ~1.5 stud di atas tanah (hip height).
+                -- Y=-1.5 dari HRP killer = permukaan tanah. +0.5 = posisi downed natural.
+                -- Gunakan posisi world langsung (bukan relative CFrame killer) untuk menghindari rotasi yang aneh.
                 local killerPos = killerRoot.Position
-                
-                -- Raycast ke bawah dari posisi killer untuk menemukan permukaan tanah nyata
-                local rayParams = RaycastParams.new()
-                rayParams.FilterType = Enum.RaycastFilterType.Exclude
-                -- Exclude karakter killer & karakter downed sendiri agar tidak terdeteksi
-                local filterList = {}
-                if killerRoot.Parent then table.insert(filterList, killerRoot.Parent) end
-                if char then table.insert(filterList, char) end
-                rayParams.FilterDescendantsInstances = filterList
-                
-                -- Tembak ray dari atas killer ke bawah (50 stud)
-                local rayOrigin = Vector3.new(killerPos.X + 2, killerPos.Y + 5, killerPos.Z)
-                local rayResult = workspace:Raycast(rayOrigin, Vector3.new(0, -50, 0), rayParams)
-                
-                -- Tentukan Y tanah: dari raycast atau fallback ke posisi killer dikurangi setinggi karakter berdiri (~3 stud)
-                local groundY = rayResult and rayResult.Position.Y or (killerPos.Y - 3)
-                
-                -- Tempatkan player 2.5 stud di samping killer, tepat 0.5 stud di atas tanah (posisi downed natural)
-                local targetPos = Vector3.new(killerPos.X + 2.5, groundY + 0.5, killerPos.Z)
-                root.CFrame = CFrame.new(targetPos)
+                local groundY = killerPos.Y - 1.0 -- estimasi permukaan tanah dari posisi HRP killer
+                root.CFrame = CFrame.new(killerPos.X + 2.5, groundY, killerPos.Z)
             end
         end
     end

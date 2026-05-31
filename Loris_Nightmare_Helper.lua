@@ -762,8 +762,9 @@ local function autoSkillCheck()
                     local hasPointer = nil
                     local hasZone = nil
                     
-                    local pointerKeywords = {"pointer", "needle", "indicator", "line", "redline", "slider", "jarum", "penunjuk"}
-                    local zoneKeywords = {"zone", "success", "target", "greenbar", "perfectzone", "kaset", "tape", "cassette", "icon", "box"}
+                    local pointerKeywords = {"pointer", "needle", "indicator", "redline", "jarum", "penunjuk"}
+                    -- zoneKeywords lebih ketat: hanya nama spesifik zona sukses kaset, bukan nama umum seperti "icon" atau "box"
+                    local zoneKeywords = {"zone", "success", "greenbar", "perfectzone", "kaset", "tape", "cassette"}
                     
                     for _, child in ipairs(gui:GetDescendants()) do
                         local cName = child.Name:lower()
@@ -986,13 +987,11 @@ local function applyPlayerESP(player)
             root.ESPHighlight:Destroy()
         end
         
-        local isKiller = checkIfKiller(player)
-        local espColor = isKiller and Theme.Red or Theme.Green
-        
+        -- Semua player ESP pakai warna Biru
         local hl = Instance.new("Highlight")
         hl.Name = "ESPHighlight"
         hl.Adornee = char
-        hl.FillColor = espColor
+        hl.FillColor = Theme.Blue
         hl.FillTransparency = 0.4
         hl.OutlineColor = Theme.TextActive
         hl.OutlineTransparency = 0.1
@@ -1258,13 +1257,35 @@ end
 
 -- Helper: Cari Root Part Milik Killer (Mendukung Player & NPC/Bot Monster di Workspace)
 local function findKillerRoot()
-    -- 1. Cari Killer sebagai Player
+    -- 1. Cari Killer sebagai Player menggunakan perbandingan tim langsung
+    -- Di Lori's Nightmare: local player = tim "Children", Killer = tim "Nightmare"
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and checkIfKiller(p) then
+        if p ~= LocalPlayer then
             local char = p.Character
             local root = char and char:FindFirstChild("HumanoidRootPart")
             if root then
-                return root
+                -- Cek tim: jika local player punya tim dan tim berbeda → killer
+                if LocalPlayer.Team and p.Team then
+                    if LocalPlayer.Team ~= p.Team then
+                        return root
+                    end
+                elseif p.Team then
+                    -- Local player tidak punya tim, cek nama tim player ini
+                    local tName = p.Team.Name:lower()
+                    if tName:find("nightmare") or tName:find("killer") or tName:find("monster") then
+                        return root
+                    end
+                else
+                    -- Tidak ada tim sama sekali: cek atribut IsKiller/IsNightmare
+                    if p:GetAttribute("IsKiller") == true or p:GetAttribute("IsNightmare") == true then
+                        return root
+                    end
+                    -- Cek nama model karakter
+                    local cName = char.Name:lower()
+                    if cName == "nightmare" or cName == "carnivore" or cName == "phantom" or cName == "tarantula" then
+                        return root
+                    end
+                end
             end
         end
     end
@@ -1282,7 +1303,7 @@ local function findKillerRoot()
         end
     end
     
-    -- 3. Fallback: Cari di seluruh Workspace descendants (jika monster ditaruh di dalam sub-folder map)
+    -- 3. Fallback: Cari di seluruh Workspace descendants
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("Model") and obj ~= LocalPlayer.Character then
             local oName = obj.Name:lower()

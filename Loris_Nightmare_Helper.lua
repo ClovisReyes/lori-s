@@ -11,16 +11,9 @@
 --]]
 
 -- ==========================================
--- 0. CONFIG LOGO KUSTOM (LOCAL FILE / GITHUB RAW / ROBLOX ASSET)
+-- 0. CONFIG LOGO KUSTOM (GITHUB RAW URL)
 -- ==========================================
--- OPSI 1: Jika menggunakan FILE LOKAL di komputer Anda (paling cepat, offline & aman)
-local LOCAL_FILE_NAME = "logo.png" -- Contoh: "my_logo.png"
-
--- OPSI 2: Jika meng-host gambar langsung di GITHUB Anda sendiri (Sangat Direkomendasikan!)
 local GITHUB_LOGO_URL = "https://raw.githubusercontent.com/ClovisReyes/lori-s/main/Logo.png"
-
--- OPSI 3: Jika menggunakan ID ASSET ROBLOX (fallback default)
-local MINIMIZE_LOGO_ID = "rbxassetid://18055673030"
 
 -- ==========================================
 -- 0.5. CONFIG FONT PREMIUM ROBLOX (CLOUDFONT)
@@ -105,12 +98,12 @@ local function applyFont(element, isBold)
     end
 end
 
--- Logika Pengunduhan & Pemrosesan Otomatis Logo (Local / GitHub / Roblox)
+-- Logika Pengunduhan & Pemrosesan Otomatis Logo (GitHub / Fallback)
 local customAssetLoaded = false
-local finalLogoImage = MINIMIZE_LOGO_ID
+local finalLogoImage = "rbxassetid://18055673030" -- Fallback Default
 
 if getcustomasset then
-    local fileName = (LOCAL_FILE_NAME ~= "") and LOCAL_FILE_NAME or "LoriHelperLogo.png"
+    local fileName = "LoriHelperLogo.png"
     local fileExists = false
     
     local fileCheck = pcall(function()
@@ -120,7 +113,6 @@ if getcustomasset then
     if fileCheck then
         fileExists = true
     elseif GITHUB_LOGO_URL and GITHUB_LOGO_URL ~= "" and writefile then
-        fileName = "LoriHelperLogo.png"
         local downloadSuccess, imgData = pcall(function()
             return game:HttpGet(GITHUB_LOGO_URL)
         end)
@@ -148,39 +140,102 @@ end
 local function checkIfKiller(player)
     if not player then return false end
     
-    -- Sensor 1: Deteksi nama spesifik/Team di Lori's Nightmare
+    -- 1. Cek Tim Resmi (Roblox Teams)
     if player.Team then
         local tName = player.Team.Name:lower()
-        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("beast") or tName:find("hunter") then
+        -- Jika nama tim mengandung unsur survivor/lobby/spectator, dia BUKAN killer
+        if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("innocent") or tName:find("good") or tName:find("lobby") or tName:find("spectator") or tName:find("choosing") or tName:find("loading") or tName:find("waiting") or tName:find("surv") or tName:find("kid") then
+            return false
+        end
+        -- Jika nama tim mengandung unsur killer/nightmare
+        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("hunter") or tName:find("beast") or tName:find("bad") or tName:find("enemy") or tName:find("demon") then
             return true
         end
     end
     
-    -- Sensor 2: Deteksi Atribut Akun Game Role
-    for _, attr in ipairs({"Role", "Team", "Class", "Type"}) do
-        local val = player:GetAttribute(attr)
-        if val then
-            local s = tostring(val):lower()
-            if s:find("nightmare") or s:find("killer") or s:find("monster") or s:find("demon") then
-                return true
+    -- 2. Cek Atribut khusus pada Player atau Character
+    local char = player.Character
+    for _, obj in ipairs({player, char}) do
+        if obj then
+            for _, attr in ipairs({"Role", "Team", "Class", "Type", "Status", "Character", "SelectedCharacter"}) do
+                local val = obj:GetAttribute(attr)
+                if val then
+                    local s = tostring(val):lower()
+                    if s:find("nightmare") or s:find("killer") or s:find("monster") or s:find("hunter") or s:find("beast") or s:find("demon") or s:find("slasher") then
+                        return true
+                    elseif s:find("child") or s:find("survivor") or s:find("citizen") or s:find("innocent") or s:find("good") or s:find("player") then
+                        return false
+                    end
+                end
+            end
+        end
+    end
+    
+    -- 3. Cek Objek Value di dalam Player / Character (e.g. StringValue "Role" atau "Team")
+    for _, obj in ipairs({player, char}) do
+        if obj then
+            for _, child in ipairs(obj:GetChildren()) do
+                if child:IsA("StringValue") or child:IsA("BoolValue") or child:IsA("ValueObject") then
+                    local cName = child.Name:lower()
+                    if cName:find("role") or cName:find("team") or cName:find("class") or cName:find("type") or cName:find("status") then
+                        local val = tostring(child.Value):lower()
+                        if val:find("nightmare") or val:find("killer") or val:find("monster") or val:find("hunter") or val:find("slasher") then
+                            return true
+                        elseif val:find("child") or val:find("survivor") or val:find("citizen") or val:find("innocent") then
+                            return false
+                        end
+                    end
+                end
             end
         end
     end
 
-    -- Sensor 3: Deteksi Ukuran & Karakteristik Model Fisik
-    local char = player.Character
+    -- 4. Cek Nama Model Karakter (Nama Monster: Nightmare, Carnivore, Phantom, Tarantula)
     if char then
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local hum = char:FindFirstChildOfClass("Humanoid")
+        local cName = char.Name:lower()
+        if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("monster") or cName:find("killer") then
+            return true
+        end
         
-        if hrp and hum then
-            if hrp.Size.Y > 2.5 or hum.HipHeight > 2.2 then
+        -- 5. Cek Red Stain atau Sinar Merah Khas Killer
+        for _, d in ipairs(char:GetDescendants()) do
+            if d:IsA("Light") or d:IsA("PointLight") or d:IsA("SpotLight") or d:IsA("SurfaceLight") then
+                -- Cek warna merah (Red dominan, Green & Blue sangat rendah)
+                if d.Color.R > 0.6 and d.Color.G < 0.4 and d.Color.B < 0.4 then
+                    return true
+                end
+            end
+            if d:IsA("BasePart") and (d.Name:lower():find("redstain") or d.Name:lower():find("stain") or d.Name:lower():find("killerlight") or d.Name:lower():find("monsterlight")) then
                 return true
             end
         end
-
-        local name = char.Name:lower()
-        if name:find("nightmare") or name:find("killer") or char:GetAttribute("IsNightmare") or char:GetAttribute("IsKiller") then
+        
+        -- 6. Cek Senjata / Alat Serang (Held Tools)
+        for _, item in ipairs(char:GetChildren()) do
+            if item:IsA("Tool") or item:IsA("Weapon") then
+                local iName = item.Name:lower()
+                if iName:find("knife") or iName:find("weapon") or iName:find("claw") or iName:find("scythe") or iName:find("sword") or iName:find("hit") or iName:find("kill") or iName:find("attack") or iName:find("nightmare") then
+                    return true
+                end
+            end
+        end
+        
+        -- 7. Karakteristik Fisik (Killer berukuran raksasa atau HipHeight tinggi)
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hrp and hum then
+            if hrp.Size.Y > 2.3 or hum.HipHeight > 1.7 or hum.MaxHealth > 100 then
+                return true
+            end
+        end
+    end
+    
+    -- 8. Fallback: Jika local player ada tim "Children", dan player ini ada tim lain yang bukan Lobby/Spectator
+    if LocalPlayer.Team and player.Team then
+        local lpTeam = LocalPlayer.Team.Name:lower()
+        local pTeam = player.Team.Name:lower()
+        if (lpTeam:find("child") or lpTeam:find("survivor")) and 
+           not (pTeam:find("child") or pTeam:find("survivor") or pTeam:find("lobby") or pTeam:find("spectator")) then
             return true
         end
     end
@@ -627,6 +682,7 @@ end)
 
 -- Fitur 1.5: Auto Skill Check Versi 2.0 (Deteksi Adaptif & Multi-Container)
 local isAutoSkillCheck = false
+local guiAppearTimes = {}
 local function autoSkillCheck()
     task.spawn(function()
         -- Helper: Cek Visibilitas GUI Secara Rekursif (Memastikan elemen benar-benar terlihat di layar)
@@ -721,59 +777,82 @@ local function autoSkillCheck()
                 end
                 
                 if isMinigameGui then
+                    -- Nonaktifkan modal/active agar tidak mengunci pergerakan karakter atau kamera
+                    pcall(function()
+                        if gui:IsA("GuiObject") then
+                            gui.Active = false
+                        end
+                        for _, child in ipairs(gui:GetDescendants()) do
+                            if child:IsA("GuiObject") then
+                                child.Active = false
+                                if child:IsA("TextButton") or child:IsA("ImageButton") then
+                                    child.Modal = false
+                                end
+                            end
+                        end
+                    end)
+
                     local hasPointer = gui:FindFirstChild("Pointer", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Indicator", true)
                     local hasZone = gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("GreenBar", true) or gui:FindFirstChild("PerfectZone", true)
                     
                     if hasPointer and hasZone then
-                        -- Ini adalah QTE Kaset / Bar (Spacebar). HANYA jalankan deteksi spasi, JANGAN klik mouse!
-                        if isGuiVisible(hasPointer) and isGuiVisible(hasZone) then
-                            local pPos = hasPointer.AbsolutePosition
-                            local zPos = hasZone.AbsolutePosition
-                            local zSize = hasZone.AbsoluteSize
-                            
-                            -- 1. Deteksi apakah ini QTE Rotasi (Sudut/Lingkar) atau QTE Geser (Sliding)
-                            -- Jika posisi awal jarum dan zona sangat dekat, ini adalah dial bulat/berputar.
-                            local isRotationQTE = (pPos - zPos).Magnitude < 15
-                            
-                            if isRotationQTE then
-                                -- QTE Rotasi: Bandingkan sudut rotasi (derajat)
-                                local pRot = hasPointer.Rotation % 360
-                                local zRot = hasZone.Rotation % 360
+                        -- Cek delay pemunculan agar tidak fail di frame pertama
+                        local guiId = nil
+                        pcall(function() guiId = gui:GetDebugId() end)
+                        guiId = guiId or tostring(gui)
+                        
+                        if not guiAppearTimes[guiId] then
+                            guiAppearTimes[guiId] = tick()
+                        end
+                        
+                        local elapsed = tick() - guiAppearTimes[guiId]
+                        if elapsed >= 0.3 then -- Delay 0.3 detik agar game menginisialisasi rotasi jarum/sukses
+                            if isGuiVisible(hasPointer) and isGuiVisible(hasZone) then
+                                local pPos = hasPointer.AbsolutePosition
+                                local zPos = hasZone.AbsolutePosition
+                                local zSize = hasZone.AbsoluteSize
                                 
-                                -- Hitung selisih sudut yang dinormalisasi (-180 s.d 180)
-                                local diff = (pRot - zRot) % 360
-                                if diff > 180 then diff = diff - 360 end
+                                -- 1. Deteksi apakah ini QTE Rotasi (Sudut/Lingkar) atau QTE Geser (Sliding)
+                                local isRotationQTE = (pPos - zPos).Magnitude < 15 or hasPointer.Rotation ~= 0 or hasZone.Rotation ~= 0
                                 
-                                -- Zona sukses kaset biasanya berada di kisaran sudut -5 s.d 25 derajat pasca alignment
-                                if diff >= -5 and diff <= 25 then
-                                    task.spawn(function()
-                                        pcall(function()
-                                            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                                            task.wait(0.01)
-                                            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                if isRotationQTE then
+                                    -- QTE Rotasi: Bandingkan sudut rotasi (derajat)
+                                    local pRot = hasPointer.AbsoluteRotation % 360
+                                    local zRot = hasZone.AbsoluteRotation % 360
+                                    
+                                    local diff = (pRot - zRot) % 360
+                                    if diff > 180 then diff = diff - 360 end
+                                    
+                                    if diff >= -15 and diff <= 35 then
+                                        task.spawn(function()
+                                            pcall(function()
+                                                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                                                task.wait(0.01)
+                                                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                            end)
                                         end)
-                                    end)
-                                    task.wait(0.12)
-                                end
-                            else
-                                -- QTE Geser: Bandingkan posisi fisik X/Y di layar
-                                local hOverlap = pPos.X >= (zPos.X - 5) and pPos.X <= (zPos.X + zSize.X + 5)
-                                local vOverlap = pPos.Y >= (zPos.Y - 5) and pPos.Y <= (zPos.Y + zSize.Y + 5)
-                                
-                                if hOverlap or vOverlap then
-                                    task.spawn(function()
-                                        pcall(function()
-                                            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                                            task.wait(0.01)
-                                            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                        task.wait(0.12)
+                                    end
+                                else
+                                    -- QTE Geser: Bandingkan posisi fisik X/Y di layar
+                                    local hOverlap = pPos.X >= (zPos.X - 5) and pPos.X <= (zPos.X + zSize.X + 5)
+                                    local vOverlap = pPos.Y >= (zPos.Y - 5) and pPos.Y <= (zPos.Y + zSize.Y + 5)
+                                    
+                                    if hOverlap and vOverlap then
+                                        task.spawn(function()
+                                            pcall(function()
+                                                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                                                task.wait(0.01)
+                                                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                            end)
                                         end)
-                                    end)
-                                    task.wait(0.12)
+                                        task.wait(0.12)
+                                    end
                                 end
                             end
                         end
                     else
-                        -- Ini adalah QTE Lingkaran (Click). Jalankan deteksi klik mouse!
+                        -- Ini adalah QTE Lingkaran (Click). Jalankan deteksi klik mouse secara silent!
                         for _, btn in ipairs(gui:GetDescendants()) do
                             if (btn:IsA("ImageButton") or btn:IsA("TextButton") or btn:IsA("ImageLabel") or btn:IsA("Frame")) and isGuiVisible(btn) then
                                 local bName = btn.Name:lower()
@@ -789,16 +868,21 @@ local function autoSkillCheck()
                                     local pos = btn.AbsolutePosition
                                     
                                     if size.X > 5 and size.Y > 5 and pos.X >= 0 and pos.Y >= 0 then
-                                        -- Jalankan klik secara asinkron agar tidak memblokir loop scanning utama
                                         task.spawn(function()
-                                            -- 1. standard button activation
-                                            if btn:IsA("ImageButton") or btn:IsA("TextButton") then
+                                            -- A. Method 1: Silent klik menggunakan firesignal jika tersedia
+                                            if firesignal then
                                                 pcall(function() btn:Activate() end)
+                                                pcall(function() firesignal(btn.MouseButton1Click) end)
+                                                pcall(function() firesignal(btn.MouseButton1Down) end)
+                                                pcall(function() firesignal(btn.Activated) end)
+                                                pcall(function() firesignal(btn.InputBegan, {UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end)
+                                                return
                                             end
                                             
-                                            -- 2. fire connections
+                                            -- B. Method 2: Silent klik menggunakan getconnections
                                             if getconnections then
                                                 if btn:IsA("ImageButton") or btn:IsA("TextButton") then
+                                                    pcall(function() btn:Activate() end)
                                                     for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() conn:Fire() end) end
                                                     for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() conn:Fire() end) end
                                                     for _, conn in ipairs(getconnections(btn.Activated)) do pcall(function() conn:Fire() end) end
@@ -806,9 +890,13 @@ local function autoSkillCheck()
                                                 for _, conn in ipairs(getconnections(btn.InputBegan)) do
                                                     pcall(function() conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end)
                                                 end
+                                                return
                                             end
                                             
-                                            -- 3. virtual mouse click (Direct bypass)
+                                            -- C. Method 3: Fallback klik virtual (hanya jika getconnections/firesignal tidak didukung)
+                                            if btn:IsA("ImageButton") or btn:IsA("TextButton") then
+                                                pcall(function() btn:Activate() end)
+                                            end
                                             local centerX = pos.X + (size.X / 2)
                                             local centerY = pos.Y + (size.Y / 2)
                                             pcall(function()
@@ -1103,37 +1191,52 @@ local function isPlayerKnocked()
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not hum then return false end
     
-    -- 1. Check PlatformStand (Metode utama game horor tipe ragdoll di Roblox)
+    -- 0. Cek Health (gk ada hp / sekali pukul mati, biasanya health <= 1 atau health == 0)
+    if hum.Health <= 1 then
+        return true
+    end
+    
+    -- 1. Deteksi Utama: Adanya ProximityPrompt "Revive" atau "Rescue" di karakter kita sendiri!
+    -- (Sangat akurat karena game memunculkan tombol ini agar player lain bisa menolong kita saat downed)
+    for _, prompt in ipairs(char:GetDescendants()) do
+        if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+            local act = prompt.ActionText:lower()
+            local obj = prompt.ObjectText:lower()
+            if act:find("revive") or act:find("rescue") or act:find("help") or act:find("tolong") or act:find("save") or
+               obj:find("revive") or obj:find("rescue") or obj:find("help") or obj:find("player") then
+                return true
+            end
+        end
+    end
+    
+    -- 2. PlatformStand Check (Sering di-set true saat merangkak/lumpuh)
     if hum.PlatformStand == true then
         return true
     end
     
-    -- 2. Check state (State Physics/PlatformStanding artinya karakter dalam kondisi ragdoll/lumpuh)
+    -- 3. Humanoid State Check (Physics / PlatformStanding)
     local state = hum:GetState()
-    if state == Enum.HumanoidStateType.Physics or state == Enum.HumanoidStateType.PlatformStanding then
+    if state == Enum.HumanoidStateType.Physics or state == Enum.HumanoidStateType.PlatformStanding or state == Enum.HumanoidStateType.Ragdoll then
         return true
     end
     
-    -- 3. Check Attributes bawaan karakter
-    if char:GetAttribute("Knocked") == true or char:GetAttribute("Downed") == true or char:GetAttribute("IsKnocked") == true or char:GetAttribute("Ragdoll") == true or char:GetAttribute("Lying") == true then
+    -- 4. Cek Kecepatan Jalan (Crawling speed biasanya sangat lambat, e.g., di bawah 5)
+    if hum.WalkSpeed > 0 and hum.WalkSpeed <= 5 then
         return true
     end
     
-    local stateAttr = char:GetAttribute("State") or char:GetAttribute("Status") or char:GetAttribute("PlayerState")
-    if stateAttr then
-        local s = tostring(stateAttr):lower()
-        if s:find("down") or s:find("knock") or s:find("ragdoll") or s:find("crawling") or s:find("lying") then
-            return true
-        end
-    end
-    
-    -- 4. Check folder/tag penanda downed di dalam Model Karakter
-    if char:FindFirstChild("Downed") or char:FindFirstChild("Knocked") or char:FindFirstChild("Ragdoll") or char:FindFirstChild("IsKnocked") then
+    -- 5. Attributes Check
+    if char:GetAttribute("Knocked") == true or char:GetAttribute("Downed") == true or char:GetAttribute("IsKnocked") == true or char:GetAttribute("Ragdoll") == true or char:GetAttribute("Lying") == true or char:GetAttribute("Crawling") == true then
         return true
     end
     
-    -- 5. Fallback check health threshold (jika HP di-set di bawah 15 atau bernilai sangat kecil pasca dipukul)
-    if hum.Health > 0 and hum.Health <= 15 then
+    -- 6. Child elements Check
+    if char:FindFirstChild("Downed") or char:FindFirstChild("Knocked") or char:FindFirstChild("Ragdoll") or char:FindFirstChild("IsKnocked") or char:FindFirstChild("KO") or char:FindFirstChild("Crawling") then
+        return true
+    end
+    
+    -- 7. Fallback health check
+    if hum.Health <= 15 then
         return true
     end
     
@@ -1291,8 +1394,8 @@ FallbackText.TextSize = 24
 applyFont(FallbackText, true)
 FallbackText.Parent = MinimizeIcon
 
--- Sembunyikan tulisan fallback jika kustom asset dari Imgur atau ID Roblox berhasil terpasang
-if customAssetLoaded or (MINIMIZE_LOGO_ID ~= "" and MINIMIZE_LOGO_ID ~= "rbxassetid://18055673030") then
+-- Sembunyikan tulisan fallback jika kustom asset berhasil terpasang
+if customAssetLoaded then
     FallbackText.Visible = false
 end
 

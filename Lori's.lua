@@ -684,16 +684,6 @@ local function autoSkillCheck()
                 
                 if not isMinigameGui then continue end
                 
-                -- Disable Active/Modal captures on QTE GUI objects to prevent movement/camera locking
-                pcall(function()
-                    for _, desc in ipairs(gui:GetDescendants()) do
-                        if desc:IsA("GuiObject") then
-                            desc.Active = false
-                            pcall(function() desc.Modal = false end)
-                        end
-                    end
-                end)
-                
                 local guiKey = tostring(gui):sub(-8)
                 
                 local function isGuiVisible(obj)
@@ -711,23 +701,21 @@ local function autoSkillCheck()
                 local function clickBtn(btn)
                     if not btn then return end
                     task.spawn(function()
-                        -- 1. Silent memory-level firesignals
-                        pcall(function() btn:Activate() end)
                         if firesignal then
-                            pcall(function() firesignal(btn.MouseButton1Down) end)
-                            pcall(function() firesignal(btn.MouseButton1Up) end)
+                            pcall(function() btn:Activate() end)
                             pcall(function() firesignal(btn.MouseButton1Click) end)
+                            pcall(function() firesignal(btn.MouseButton1Down) end)
                             pcall(function() firesignal(btn.Activated) end)
+                            return
                         end
                         if getconnections then
-                            for _, event in ipairs({btn.MouseButton1Down, btn.MouseButton1Up, btn.MouseButton1Click, btn.Activated}) do
-                                for _, c in ipairs(getconnections(event)) do
-                                    pcall(function() c:Fire() end)
-                                end
-                            end
+                            pcall(function() btn:Activate() end)
+                            for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
+                            for _, c in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() c:Fire() end) end
+                            for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
+                            return
                         end
-                        
-                        -- 2. Physical hardware-level click fallback (runs in parallel to guarantee actual click registration)
+                        pcall(function() btn:Activate() end)
                         local bp = btn.AbsolutePosition
                         local bs = btn.AbsoluteSize
                         local cx = bp.X + bs.X / 2
@@ -746,19 +734,73 @@ local function autoSkillCheck()
                 -- berada di zona yang benar — langsung klik saat ditemukan.
                 -- =============================================================
                 if gName == "barminigame" then
-                    -- Cari TextButton bernama SkillCheck yang visible
+                    local needle = nil
+                    local tape = nil
                     local skillBtn = nil
+                    
                     for _, d in ipairs(gui:GetDescendants()) do
-                        if d.Name == "SkillCheck" and d:IsA("TextButton") and d.Visible then
-                            skillBtn = d
-                            break
+                        if d:IsA("GuiObject") and isGuiVisible(d) then
+                            local dName = d.Name
+                            local sz = d.AbsoluteSize
+                            
+                            -- 1. Cari Jarum (Frame tipis bernama "bar")
+                            if dName == "bar" and d:IsA("Frame") then
+                                if needle == nil or sz.X < needle.AbsoluteSize.X then
+                                    needle = d
+                                end
+                            end
+                            
+                            -- 2. Cari Tape (ImageLabel "img" berukuran sedang/besar)
+                            if (dName == "img" or dName:lower():find("tape") or dName:lower():find("kaset") or dName:lower():find("goal")) and d:IsA("ImageLabel") then
+                                if sz.X >= 40 and sz.X <= 150 then
+                                    tape = d
+                                end
+                            end
+                            
+                            -- 3. Cari Tombol Klik
+                            if (dName == "SkillCheck" or dName == "Button" or dName:lower():find("check")) and (d:IsA("TextButton") or d:IsA("ImageButton")) then
+                                skillBtn = d
+                            end
                         end
                     end
-                    -- Klik langsung tanpa tunggu posisi jarum
-                    if skillBtn and not justPressed[guiKey] then
-                        justPressed[guiKey] = true
-                        clickBtn(skillBtn)
-                        task.delay(0.3, function() justPressed[guiKey] = false end)
+                    
+                    -- Fallback jika tape belum ketemu: cari ImageLabel "img" terbesar
+                    if not tape then
+                        local largestImg = nil
+                        for _, d in ipairs(gui:GetDescendants()) do
+                            if d.Name == "img" and d:IsA("ImageLabel") and isGuiVisible(d) then
+                                if largestImg == nil or d.AbsoluteSize.X > largestImg.AbsoluteSize.X then
+                                    largestImg = d
+                                end
+                            end
+                        end
+                        tape = largestImg
+                    end
+                    
+                    -- Klik dan tekan Spacebar ketika jarum berada di dalam area tape
+                    if needle and tape and not justPressed[guiKey] then
+                        local needleCenter = needle.AbsolutePosition.X + needle.AbsoluteSize.X / 2
+                        local tapeLeft     = tape.AbsolutePosition.X
+                        local tapeRight    = tapeLeft + tape.AbsoluteSize.X
+                        
+                        -- Cek overlap (toleransi 5 pixel agar registrasi sempurna)
+                        local tolerance = 5
+                        if needleCenter >= (tapeLeft - tolerance) and needleCenter <= (tapeRight + tolerance) then
+                            justPressed[guiKey] = true
+                            
+                            -- Klik tombol SkillCheck jika ada
+                            if skillBtn then
+                                clickBtn(skillBtn)
+                            end
+                            
+                            -- Kirim input Spacebar
+                            pressSpace()
+                            
+                            -- Jeda agar tidak terjadi klik ganda
+                            task.delay(0.5, function()
+                                justPressed[guiKey] = false
+                            end)
+                        end
                     end
                     
                 else
@@ -1414,36 +1456,7 @@ local function isPlayerKnocked()
     return false
 end
 
--- Helper: Cek apakah player adalah Killer/Nightmare
--- Data tim dari game: Survivors = "Children", Killers = "Killers"
--- Nama karakter killer: Nightmare, Carnivore, Tarantula (Spider), Phantom (Spectre)
-local function checkIfKiller(p)
-    -- 1. Cek nama tim
-    if p.Team then
-        local tName = p.Team.Name:lower()
-        if tName:find("killer") or tName:find("nightmare") or tName:find("monster") then
-            return true
-        end
-        if tName:find("child") or tName:find("survivor") or tName:find("human") then
-            return false
-        end
-    end
-    -- 2. Cek atribut game
-    if p:GetAttribute("IsKiller") == true or p:GetAttribute("IsNightmare") == true then
-        return true
-    end
-    -- 3. Cek nama karakter (dari debug scan game ini)
-    local char = p.Character
-    if char then
-        local cName = char.Name:lower()
-        if cName:find("nightmare") or cName:find("carnivore") or
-           cName:find("tarantula") or cName:find("spider") or
-           cName:find("phantom") or cName:find("spectre") then
-            return true
-        end
-    end
-    return false
-end
+
 
 -- Helper: Cari Root Part Milik Killer (Mendukung Player & NPC/Bot Monster di Workspace)
 local function findKillerRoot()

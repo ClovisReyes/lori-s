@@ -2,6 +2,7 @@
     ========================================================================
      LORI'S NIGHTMARE - ULTIMATE UTILITY & EXPLOIT HUB (ROBLOX LUA)
     ========================================================================
+     VERSI 2.1 (INTEGRASI FONT TTF KUSTOM & DETEKSI SENSOR ADAPTIF)
      Aesthetics: Ultra-Modern Dark Theme, Purple Violet Neon Gradient, Soft Borders
      Target: Lori's Nightmare Roblox (Dead by Daylight / Flee the Facility Style)
      Platform Compatibility: All major Executors (Solara, Wave, Delta, Codex, Hydrogen)
@@ -10,12 +11,23 @@
 --]]
 
 -- ==========================================
--- 0. CONFIG LOGO KUSTOM (GAMBAR 'N' DONGKER)
+-- 0. CONFIG LOGO KUSTOM (LOCAL FILE / GITHUB RAW / ROBLOX ASSET)
 -- ==========================================
--- Upload logo kustom Anda ke Roblox sebagai Decal/Image, lalu masukkan ID-nya di sini!
--- Jika Anda belum menguploadnya, script akan merender huruf 'N' putih dengan gradasi
--- biru dongker neon yang sangat mirip dengan logo yang Anda kirimkan.
-local MINIMIZE_LOGO_ID = "rbxassetid://18055673030" -- ID Decal / Image dari logo N Anda
+-- OPSI 1: Jika menggunakan FILE LOKAL di komputer Anda (paling cepat, offline & aman)
+local LOCAL_FILE_NAME = "" -- Contoh: "my_logo.png"
+
+-- OPSI 2: Jika meng-host gambar langsung di GITHUB Anda sendiri (Sangat Direkomendasikan!)
+local GITHUB_LOGO_URL = "https://raw.githubusercontent.com/ClovisReyes/lori-s/main/Logo.png"
+
+-- OPSI 3: Jika menggunakan ID ASSET ROBLOX (fallback default)
+local MINIMIZE_LOGO_ID = "rbxassetid://18055673030"
+
+-- ==========================================
+-- 0.5. CONFIG FONT KUSTOM LOKAL (.TTF)
+-- ==========================================
+-- Taruh file font Anda (contoh: "zh-cn.ttf") di dalam folder 'workspace' milik Executor Anda.
+-- Tuliskan nama file font-nya di bawah ini:
+local LOCAL_FONT_NAME = "zh-cn.ttf" -- Kosongkan "" jika ingin menggunakan font bawaan (Gotham)
 
 -- Services
 local Players = game:GetService("Players")
@@ -23,13 +35,14 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 
 -- Target Parent (CoreGui untuk Executor agar aman, PlayerGui untuk Roblox Studio)
 local TargetParent = nil
 local success = pcall(function()
-    TargetParent = game:GetService("CoreGui")
+    TargetParent = CoreGui
 end)
 if not success or not TargetParent then
     TargetParent = LocalPlayer:WaitForChild("PlayerGui")
@@ -51,12 +64,12 @@ local Theme = {
     TextActive = Color3.fromRGB(255, 255, 255),
     TextMuted = Color3.fromRGB(150, 150, 160),
     CardBg = Color3.fromRGB(26, 26, 32),
-    Green = Color3.fromRGB(46, 204, 113), -- Survivor Color
-    Red = Color3.fromRGB(231, 76, 60),    -- Killer Color
+    Green = Color3.fromRGB(46, 204, 113), -- Survivor Color (Neon Green)
+    Red = Color3.fromRGB(231, 76, 60),    -- Killer Color (Neon Red)
     Blue = Color3.fromRGB(52, 152, 219),
     Yellow = Color3.fromRGB(241, 196, 15),
-    Font = Enum.Font.GothamSemibold,
-    FontBold = Enum.Font.GothamBold
+    Font = Enum.Font.GothamSemibold,      -- Fallback Font
+    FontBold = Enum.Font.GothamBold       -- Fallback Font Bold
 }
 
 local function tween(object, info, properties)
@@ -65,34 +78,154 @@ local function tween(object, info, properties)
     return tweenObject
 end
 
+-- ==========================================
+-- LOGIKA PEMUATAN FONT TTF KUSTOM DINAMIS
+-- ==========================================
+local customFont = nil
+if LOCAL_FONT_NAME ~= "" and getcustomasset then
+    local fontExists = pcall(function()
+        return readfile(LOCAL_FONT_NAME)
+    end)
+    
+    if fontExists then
+        local successAsset, assetId = pcall(function()
+            return getcustomasset(LOCAL_FONT_NAME)
+        end)
+        if successAsset and assetId then
+            pcall(function()
+                customFont = Font.new(assetId)
+            end)
+        end
+    end
+end
+
+-- Helper untuk Menerapkan Font ke UI Element
+local function applyFont(element, isBold)
+    if customFont then
+        pcall(function()
+            element.FontFace = customFont
+        end)
+    else
+        element.Font = isBold and Theme.FontBold or Theme.Font
+    end
+end
+
+-- Logika Pengunduhan & Pemrosesan Otomatis Logo (Local / GitHub / Roblox)
+local customAssetLoaded = false
+local finalLogoImage = MINIMIZE_LOGO_ID
+
+if getcustomasset then
+    local fileName = (LOCAL_FILE_NAME ~= "") and LOCAL_FILE_NAME or "LoriHelperLogo.png"
+    local fileExists = false
+    
+    local fileCheck = pcall(function()
+        return readfile(fileName)
+    end)
+    
+    if fileCheck then
+        fileExists = true
+    elseif GITHUB_LOGO_URL and GITHUB_LOGO_URL ~= "" and writefile then
+        fileName = "LoriHelperLogo.png"
+        local downloadSuccess, imgData = pcall(function()
+            return game:HttpGet(GITHUB_LOGO_URL)
+        end)
+        
+        if downloadSuccess and imgData and imgData ~= "" then
+            pcall(function()
+                writefile(fileName, imgData)
+                fileExists = true
+            end)
+        end
+    end
+    
+    if fileExists then
+        local assetSuccess, assetId = pcall(function()
+            return getcustomasset(fileName)
+        end)
+        if assetSuccess and assetId then
+            finalLogoImage = assetId
+            customAssetLoaded = true
+        end
+    end
+end
+
 -- Helper: Cek Apakah Player Adalah Killer (The Nightmare)
 local function checkIfKiller(player)
-    -- 1. Cek Team Name
+    if not player then return false end
+    
+    -- Sensor 1: Deteksi nama spesifik/Team di Lori's Nightmare
     if player.Team then
         local tName = player.Team.Name:lower()
-        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("beast") then
+        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("beast") or tName:find("hunter") then
             return true
         end
     end
     
-    -- 2. Cek Player Attributes (Game Role)
-    local role = player:GetAttribute("Role") or player:GetAttribute("Team") or player:GetAttribute("Class")
-    if role then
-        local rStr = tostring(role):lower()
-        if rStr:find("nightmare") or rStr:find("killer") or rStr:find("monster") then
-            return true
+    -- Sensor 2: Deteksi Atribut Akun Game Role
+    for _, attr in ipairs({"Role", "Team", "Class", "Type"}) do
+        local val = player:GetAttribute(attr)
+        if val then
+            local s = tostring(val):lower()
+            if s:find("nightmare") or s:find("killer") or s:find("monster") or s:find("demon") then
+                return true
+            end
         end
     end
-    
-    -- 3. Cek Model Character
+
+    -- Sensor 3: Deteksi Ukuran & Karakteristik Model Fisik
     local char = player.Character
     if char then
-        if char.Name:lower():find("nightmare") or char:GetAttribute("IsNightmare") or char:GetAttribute("IsKiller") then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        
+        if hrp and hum then
+            if hrp.Size.Y > 2.5 or hum.HipHeight > 2.2 then
+                return true
+            end
+        end
+
+        local name = char.Name:lower()
+        if name:find("nightmare") or name:find("killer") or char:GetAttribute("IsNightmare") or char:GetAttribute("IsKiller") then
             return true
         end
     end
     
     return false
+end
+
+-- Helper: Sensor TV Adaptif (ProximityPrompt)
+local function findTVs()
+    local tvList = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") then
+            local actionText = obj.ActionText:lower()
+            local objectText = obj.ObjectText:lower()
+            
+            if actionText:find("repair") or actionText:find("fix") or actionText:find("restore") or objectText:find("tv") or objectText:find("television") or objectText:find("generator") then
+                local tvPart = obj.Parent
+                if tvPart and tvPart:IsA("BasePart") then
+                    table.insert(tvList, tvPart)
+                elseif tvPart and tvPart:IsA("Model") and tvPart.PrimaryPart then
+                    table.insert(tvList, tvPart.PrimaryPart)
+                elseif tvPart and tvPart:IsA("Model") then
+                    local meshPart = tvPart:FindFirstChildWhichIsA("BasePart", true)
+                    if meshPart then
+                        table.insert(tvList, meshPart)
+                    end
+                end
+            end
+        end
+    end
+    
+    if #tvList == 0 then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and (obj.Name:lower():find("tv") or obj.Name:lower():find("television") or obj.Name:lower():find("gen") or obj.Name:lower():find("generator")) then
+                table.insert(tvList, obj)
+            end
+        end
+    end
+    
+    return tvList
 end
 
 -- ==========================================
@@ -144,7 +277,7 @@ TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "LORI NIGHTMARE"
 TitleLabel.TextColor3 = Theme.TextActive
 TitleLabel.TextSize = 16
-TitleLabel.Font = Theme.FontBold
+applyFont(TitleLabel, true)
 TitleLabel.Parent = Sidebar
 
 local TitleGradient = Instance.new("UIGradient")
@@ -239,7 +372,7 @@ local function CreatePage(name, isDefault)
     NavBtn.Text = "   " .. name
     NavBtn.TextColor3 = isDefault and Theme.TextActive or Theme.TextMuted
     NavBtn.TextSize = 13
-    NavBtn.Font = Theme.Font
+    applyFont(NavBtn, false)
     NavBtn.TextXAlignment = Enum.TextXAlignment.Left
     NavBtn.AutoButtonColor = false
     NavBtn.Parent = NavList
@@ -297,7 +430,7 @@ local function CreateCard(parent, title, height)
     CardTitle.Text = title:upper()
     CardTitle.TextColor3 = Theme.Accent
     CardTitle.TextSize = 11
-    CardTitle.Font = Theme.FontBold
+    applyFont(CardTitle, true)
     CardTitle.TextXAlignment = Enum.TextXAlignment.Left
     CardTitle.Parent = Card
 
@@ -312,7 +445,7 @@ local function CreateButton(parent, text, pos, size, callback)
     Btn.Text = text
     Btn.TextColor3 = Theme.TextActive
     Btn.TextSize = 12
-    Btn.Font = Theme.Font
+    applyFont(Btn, false)
     Btn.AutoButtonColor = false
     Btn.Parent = parent
 
@@ -351,7 +484,7 @@ local function CreateToggle(parent, text, pos, defaultState, callback)
     Label.Text = text
     Label.TextColor3 = Theme.TextActive
     Label.TextSize = 13
-    Label.Font = Theme.Font
+    applyFont(Label, false)
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = ToggleBg
 
@@ -438,59 +571,53 @@ CreateToggle(FarmCard, "Auto Coin Farm (Teleport)", UDim2.new(0, 10, 0, 35), fal
     end
 end)
 
--- Fitur 1.5: Auto Skill Check (TV Bulat & Kaset Tape)
+-- Fitur 1.5: Auto Skill Check Versi 2.0 (Deteksi Adaptif & Multi-Container)
 local isAutoSkillCheck = false
 local function autoSkillCheck()
     task.spawn(function()
         while isAutoSkillCheck do
-            task.wait(0.01) -- Deteksi super cepat untuk akurasi instan
-            local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-            if playerGui then
-                for _, gui in ipairs(playerGui:GetChildren()) do
-                    if gui:IsA("ScreenGui") and gui.Enabled then
-                        local gName = gui.Name:lower()
-                        
-                        -- Deteksi GUI MiniGame / Repair TV / Kaset
-                        if gName:find("repair") or gName:find("tv") or gName:find("skill") or gName:find("qte") or gName:find("kaset") or gName:find("tape") or gName:find("cassette") or gName:find("minigame") then
+            task.wait(0.005)
+            
+            local searchContainers = {LocalPlayer:FindFirstChild("PlayerGui"), CoreGui}
+            
+            for _, container in ipairs(searchContainers) do
+                if container then
+                    for _, gui in ipairs(container:GetChildren()) do
+                        if gui:IsA("ScreenGui") and gui.Enabled then
+                            local gName = gui.Name:lower()
                             
-                            -- 1. PETA LINGKARAN (Circle Skillcheck)
-                            -- Otomatis menekan/mengklik tombol lingkaran yang muncul secara instan
-                            for _, btn in ipairs(gui:GetDescendants()) do
-                                if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and btn.Visible and btn.Active then
-                                    pcall(function()
-                                        btn:Activate()
-                                        -- Pastikan executor memanggil koneksi event klik internal
-                                        if getconnections then
-                                            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
-                                                conn:Fire()
-                                            end
-                                            for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do
-                                                conn:Fire()
-                                            end
-                                        end
-                                    end)
-                                end
-                            end
-                            
-                            -- 2. KASET / TAPE MINI-GAME (Needle / Bar Alignment)
-                            -- Mencari Pointer/Needle dan TargetZone di dalam GUI Kaset
-                            local pointer = gui:FindFirstChild("Pointer", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Bar", true) or gui:FindFirstChild("Pin", true)
-                            local zone = gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("GreenBar", true)
-                            
-                            if pointer and zone then
-                                local pPos = pointer.AbsolutePosition
-                                local zPos = zone.AbsolutePosition
-                                local zSize = zone.AbsoluteSize
+                            if gName:find("repair") or gName:find("tv") or gName:find("skill") or gName:find("qte") or gName:find("kaset") or gName:find("tape") or gName:find("cassette") or gName:find("minigame") or gName:find("play") or gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) then
                                 
-                                -- Cek apakah posisi X/Y jarum penunjuk berada di dalam area target
-                                if pPos.X >= zPos.X and pPos.X <= (zPos.X + zSize.X) then
-                                    -- Eksekusi spacepress secara virtual untuk mencocokkan kaset
-                                    pcall(function()
-                                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                                        task.wait(0.02)
-                                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-                                    end)
-                                    task.wait(0.1) -- Jeda pengulangan agar tidak double trigger
+                                -- 1. SENSOR PETA LINGKARAN (Circle Skillcheck)
+                                for _, btn in ipairs(gui:GetDescendants()) do
+                                    if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and btn.Visible and btn.Active then
+                                        pcall(function()
+                                            btn:Activate()
+                                            if getconnections then
+                                                for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do conn:Fire() end
+                                                for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do conn:Fire() end
+                                            end
+                                        end)
+                                    end
+                                end
+                                
+                                -- 2. SENSOR KASET TAPE DENGAN BAR ALIGNMENT & KEYBOARD EMULATOR
+                                local pointer = gui:FindFirstChild("Pointer", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Bar", true) or gui:FindFirstChild("Pin", true) or gui:FindFirstChild("Indicator", true)
+                                local zone = gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("GreenBar", true) or gui:FindFirstChild("PerfectZone", true)
+                                
+                                if pointer and zone then
+                                    local pPos = pointer.AbsolutePosition
+                                    local zPos = zone.AbsolutePosition
+                                    local zSize = zone.AbsoluteSize
+                                    
+                                    if pPos.X >= (zPos.X - 5) and pPos.X <= (zPos.X + zSize.X + 5) then
+                                        pcall(function()
+                                            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                                            task.wait(0.01)
+                                            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                        end)
+                                        task.wait(0.12)
+                                    end
                                 end
                             end
                         end
@@ -508,27 +635,26 @@ CreateToggle(FarmCard, "Auto Skill Check (TV & Kaset)", UDim2.new(0, 10, 0, 75),
     end
 end)
 
--- Fitur 2: Teleport Ke TV Terdekat untuk Perbaikan
+-- Fitur 2: Teleport Ke TV Terdekat (Versi Sensor Adaptif ProximityPrompt)
 local function teleportToNearestTV()
     local character = LocalPlayer.Character
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
     if not rootPart then return end
     
+    local tvs = findTVs()
     local nearestTV = nil
     local shortestDist = math.huge
     
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and (obj.Name:lower():find("tv") or obj.Name:lower():find("television") or obj.Name:lower():find("gen")) then
-            local dist = (obj.Position - rootPart.Position).Magnitude
-            if dist < shortestDist then
-                shortestDist = dist
-                nearestTV = obj
-            end
+    for _, tv in ipairs(tvs) do
+        local dist = (tv.Position - rootPart.Position).Magnitude
+        if dist < shortestDist then
+            shortestDist = dist
+            nearestTV = tv
         end
     end
     
     if nearestTV then
-        rootPart.CFrame = nearestTV.CFrame + Vector3.new(0, 3, 0) -- Teleport 3 stud di atas TV
+        rootPart.CFrame = nearestTV.CFrame + Vector3.new(0, 4, 0)
     end
 end
 
@@ -549,20 +675,18 @@ local playerEspConns = {}
 local coinEspBoxes = {}
 local tvEspBoxes = {}
 
--- ESP Player Logic (Highlight modern dengan warna berbeda)
+-- ESP Player Logic (Highlight modern dengan warna Killer/Survivor)
 local function applyPlayerESP(player)
     if player == LocalPlayer then return end
     
     local function highlightChar(char)
-        local root = char:WaitForChild("HumanoidRootPart", 5)
+        local root = char:WaitForChild("HumanoidRootPart", 8)
         if not root then return end
         
-        -- Hapus highlight lama jika ada
         if root:FindFirstChild("ESPHighlight") then
             root.ESPHighlight:Destroy()
         end
         
-        -- Deteksi peran player: Killer (Merah), Survivor/Player biasa (Hijau)
         local isKiller = checkIfKiller(player)
         local espColor = isKiller and Theme.Red or Theme.Green
         
@@ -611,7 +735,6 @@ end
 local function createObjectESP(object, color, name, listTable)
     if not object:IsA("BasePart") then return end
     
-    -- Hapus billboard lama jika ada
     if object:FindFirstChild("ObjectESP") then
         object.ObjectESP:Destroy()
     end
@@ -629,7 +752,7 @@ local function createObjectESP(object, color, name, listTable)
     text.Text = name
     text.TextColor3 = color
     text.TextSize = 11
-    text.Font = Theme.FontBold
+    applyFont(text, true)
     text.Parent = bgui
     
     table.insert(listTable, bgui)
@@ -654,10 +777,9 @@ end
 local function toggleTvESP(state)
     espTvsActive = state
     if espTvsActive then
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") and (obj.Name:lower():find("tv") or obj.Name:lower():find("television") or obj.Name:lower():find("gen")) then
-                createObjectESP(obj, Theme.Blue, "📺 TV Generator", tvEspBoxes)
-            end
+        local tvs = findTVs()
+        for _, tvPart in ipairs(tvs) do
+            createObjectESP(tvPart, Theme.Blue, "📺 TV Generator", tvEspBoxes)
         end
     else
         for _, bgui in ipairs(tvEspBoxes) do
@@ -685,7 +807,7 @@ speedLabel.BackgroundTransparency = 1
 speedLabel.Text = "WalkSpeed: " .. speedVal
 speedLabel.TextColor3 = Theme.TextActive
 speedLabel.TextSize = 13
-speedLabel.Font = Theme.Font
+applyFont(speedLabel, false)
 speedLabel.TextXAlignment = Enum.TextXAlignment.Left
 speedLabel.Parent = ModifierCard
 
@@ -716,7 +838,7 @@ jumpLabel.BackgroundTransparency = 1
 jumpLabel.Text = "JumpPower: " .. jumpVal
 jumpLabel.TextColor3 = Theme.TextActive
 jumpLabel.TextSize = 13
-jumpLabel.Font = Theme.Font
+applyFont(jumpLabel, false)
 jumpLabel.TextXAlignment = Enum.TextXAlignment.Left
 jumpLabel.Parent = ModifierCard
 
@@ -810,7 +932,7 @@ MinimizeIcon.Size = UDim2.new(0, 52, 0, 52)
 MinimizeIcon.Position = UDim2.new(0.05, 0, 0.2, 0)
 MinimizeIcon.BackgroundColor3 = Color3.fromRGB(5, 15, 35) -- Biru dongker menyala gelap matching logo user
 MinimizeIcon.BorderSizePixel = 0
-MinimizeIcon.Image = MINIMIZE_LOGO_ID
+MinimizeIcon.Image = finalLogoImage
 MinimizeIcon.Visible = false
 MinimizeIcon.ClipsDescendants = true
 MinimizeIcon.Parent = ScreenGui
@@ -832,10 +954,11 @@ FallbackText.BackgroundTransparency = 1
 FallbackText.Text = "N"
 FallbackText.TextColor3 = Theme.TextActive
 FallbackText.TextSize = 24
-FallbackText.Font = Theme.FontBold
+applyFont(FallbackText, true)
 FallbackText.Parent = MinimizeIcon
 
-if MINIMIZE_LOGO_ID ~= "" and MINIMIZE_LOGO_ID ~= "rbxassetid://18055673030" then
+-- Sembunyikan tulisan fallback jika kustom asset dari Imgur atau ID Roblox berhasil terpasang
+if customAssetLoaded or (MINIMIZE_LOGO_ID ~= "" and MINIMIZE_LOGO_ID ~= "rbxassetid://18055673030") then
     FallbackText.Visible = false
 end
 
@@ -879,7 +1002,7 @@ MinimizeBtn.BackgroundTransparency = 1
 MinimizeBtn.Text = "—"
 MinimizeBtn.TextColor3 = Theme.TextMuted
 MinimizeBtn.TextSize = 14
-MinimizeBtn.Font = Theme.FontBold
+applyFont(MinimizeBtn, true)
 MinimizeBtn.Parent = MainFrame
 
 MinimizeBtn.MouseEnter:Connect(function()
@@ -891,7 +1014,6 @@ end)
 
 -- Fungsi Pemicu Minimize
 MinimizeBtn.MouseButton1Click:Connect(function()
-    -- Animasi menyusutkan main frame dengan halus
     tween(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
         Size = UDim2.new(0, 0, 0, 0),
         Position = MainFrame.Position + UDim2.new(0, 290, 0, 190),
@@ -900,7 +1022,6 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     task.wait(0.25)
     MainFrame.Visible = false
     
-    -- Memunculkan logo kustom mengambang dengan efek elastic pop-up
     MinimizeIcon.Visible = true
     MinimizeIcon.Size = UDim2.new(0, 0, 0, 0)
     tween(MinimizeIcon, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
@@ -910,16 +1031,14 @@ end)
 
 -- Fungsi Pemicu Maximize (Klik Logo Floating untuk Membuka Kembali)
 MinimizeIcon.MouseButton1Click:Connect(function()
-    if iconDragToggle then return end -- Mencegah trigger klik saat digeser
+    if iconDragToggle then return end
     
-    -- Mengecilkan logo floating kembali
     tween(MinimizeIcon, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
         Size = UDim2.new(0, 0, 0, 0)
     })
     task.wait(0.2)
     MinimizeIcon.Visible = false
     
-    -- Memunculkan kembali main frame secara utuh dengan elastic pop-up
     MainFrame.Visible = true
     tween(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
         Size = UDim2.new(0, 580, 0, 380),
@@ -937,7 +1056,7 @@ CloseBtn.BackgroundTransparency = 1
 CloseBtn.Text = "✕"
 CloseBtn.TextColor3 = Theme.TextMuted
 CloseBtn.TextSize = 18
-CloseBtn.Font = Theme.FontBold
+applyFont(CloseBtn, true)
 CloseBtn.Parent = MainFrame
 
 CloseBtn.MouseEnter:Connect(function()
@@ -948,7 +1067,6 @@ CloseBtn.MouseLeave:Connect(function()
 end)
 
 CloseBtn.MouseButton1Click:Connect(function()
-    -- Bersihkan dan matikan semua loop aktif
     isFarmingCoins = false
     isAutoSkillCheck = false
     toggleNoclip(false)
@@ -957,7 +1075,6 @@ CloseBtn.MouseButton1Click:Connect(function()
     toggleCoinESP(false)
     toggleTvESP(false)
     
-    -- Animasi mengecil saat ditutup permanent
     tween(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
         Size = UDim2.new(0, 0, 0, 0),
         Position = MainFrame.Position + UDim2.new(0, 290, 0, 190),

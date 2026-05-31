@@ -684,6 +684,16 @@ local function autoSkillCheck()
                 
                 if not isMinigameGui then continue end
                 
+                -- Disable Active/Modal captures on QTE GUI objects to prevent movement/camera locking
+                pcall(function()
+                    for _, desc in ipairs(gui:GetDescendants()) do
+                        if desc:IsA("GuiObject") then
+                            desc.Active = false
+                            pcall(function() desc.Modal = false end)
+                        end
+                    end
+                end)
+                
                 local guiKey = tostring(gui):sub(-8)
                 
                 local function isGuiVisible(obj)
@@ -701,21 +711,23 @@ local function autoSkillCheck()
                 local function clickBtn(btn)
                     if not btn then return end
                     task.spawn(function()
+                        -- 1. Silent memory-level firesignals
+                        pcall(function() btn:Activate() end)
                         if firesignal then
-                            pcall(function() btn:Activate() end)
-                            pcall(function() firesignal(btn.MouseButton1Click) end)
                             pcall(function() firesignal(btn.MouseButton1Down) end)
+                            pcall(function() firesignal(btn.MouseButton1Up) end)
+                            pcall(function() firesignal(btn.MouseButton1Click) end)
                             pcall(function() firesignal(btn.Activated) end)
-                            return
                         end
                         if getconnections then
-                            pcall(function() btn:Activate() end)
-                            for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
-                            for _, c in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() c:Fire() end) end
-                            for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
-                            return
+                            for _, event in ipairs({btn.MouseButton1Down, btn.MouseButton1Up, btn.MouseButton1Click, btn.Activated}) do
+                                for _, c in ipairs(getconnections(event)) do
+                                    pcall(function() c:Fire() end)
+                                end
+                            end
                         end
-                        pcall(function() btn:Activate() end)
+                        
+                        -- 2. Physical hardware-level click fallback (runs in parallel to guarantee actual click registration)
                         local bp = btn.AbsolutePosition
                         local bs = btn.AbsoluteSize
                         local cx = bp.X + bs.X / 2
@@ -730,59 +742,47 @@ local function autoSkillCheck()
                 
                 -- =============================================================
                 -- BARMINIGAME QTE (Cassette / Tape Repair)
-                -- Elemen dari debug scan:
-                --   Frame "bar" (6x36) = jarum bergerak
-                --   ImageLabel "Goal" (58x28) = zona target
-                --   TextButton "SkillCheck" = tombol yang diklik
+                -- SkillCheck TextButton hanya muncul (Visible=true) saat jarum
+                -- berada di zona yang benar — langsung klik saat ditemukan.
                 -- =============================================================
                 if gName == "barminigame" then
-                    local needle     = nil  -- frame bar (jarum tipis)
-                    local goalEl     = nil  -- imageLabel Goal
-                    local skillBtn   = nil  -- TextButton SkillCheck
-                    
+                    -- Cari TextButton bernama SkillCheck yang visible
+                    local skillBtn = nil
                     for _, d in ipairs(gui:GetDescendants()) do
-                        if not d.Visible then continue end
-                        local dName = d.Name
-                        if dName == "SkillCheck" and (d:IsA("TextButton") or d:IsA("ImageButton")) then
+                        if d.Name == "SkillCheck" and d:IsA("TextButton") and d.Visible then
                             skillBtn = d
-                        elseif dName == "Goal" and (d:IsA("ImageLabel") or d:IsA("Frame")) then
-                            goalEl = d
-                        elseif dName == "bar" and d:IsA("Frame") then
-                            -- Ambil yang paling tipis (= jarum)
-                            if needle == nil or d.AbsoluteSize.X < needle.AbsoluteSize.X then
-                                needle = d
-                            end
+                            break
                         end
                     end
-                    
-                    if needle and goalEl and skillBtn and not justPressed[guiKey] then
-                        local needleCenter = needle.AbsolutePosition.X + needle.AbsoluteSize.X / 2
-                        local goalLeft     = goalEl.AbsolutePosition.X
-                        local goalRight    = goalLeft + goalEl.AbsoluteSize.X
-                        
-                        -- Klik saat jarum masuk zona goal
-                        if needleCenter >= goalLeft and needleCenter <= goalRight then
-                            justPressed[guiKey] = true
-                            clickBtn(skillBtn)
-                            task.delay(0.4, function() justPressed[guiKey] = false end)
-                        end
+                    -- Klik langsung tanpa tunggu posisi jarum
+                    if skillBtn and not justPressed[guiKey] then
+                        justPressed[guiKey] = true
+                        clickBtn(skillBtn)
+                        task.delay(0.3, function() justPressed[guiKey] = false end)
                     end
                     
                 else
                 -- =============================================================
-                -- CIRCLE / COIN QTE — klik semua tombol visible (Minigame dll.)
+                -- CIRCLE / COIN QTE — klik Coin, GoldNoCoin, dan Template (Minigame)
                 -- =============================================================
                     for _, btn in ipairs(gui:GetDescendants()) do
                         if not (btn:IsA("ImageButton") or btn:IsA("TextButton")) then continue end
                         if not isGuiVisible(btn) then continue end
                         local sz   = btn.AbsoluteSize
                         local bpos = btn.AbsolutePosition
-                        -- Skip tombol yang ukurannya tidak masuk akal
                         if sz.X < 5 or sz.Y < 5 or sz.X > 500 or sz.Y > 500 then continue end
                         if bpos.X < 0 or bpos.Y < 0 then continue end
-                        -- Skip tombol SkillCheck kalau ada (bukan circle QTE)
-                        local btnName = btn.Name:lower()
-                        if btnName == "skillcheck" then continue end
+                        
+                        local btnName = btn.Name
+                        
+                        -- Untuk GUI Minigame: klik Coin, GoldNoCoin, dan Template yang visible (skip Empty)
+                        if gName == "minigame" then
+                            if btnName ~= "Coin" and btnName ~= "GoldNoCoin" and btnName ~= "Template" then continue end
+                        else
+                            -- GUI lain: skip SkillCheck saja
+                            if btnName == "SkillCheck" then continue end
+                        end
+                        
                         clickBtn(btn)
                     end
                 end

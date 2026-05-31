@@ -147,7 +147,7 @@ local function checkIfKiller(player)
         local tName = player.Team.Name:lower()
         
         -- Jika nama tim jelas survivor → pasti Hijau
-        if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("innocent") or tName:find("lobby") or tName:find("spectator") or tName:find("waiting") then
+        if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("innocent") or tName:find("lobby") or tName:find("spectator") or tName:find("waiting") or tName:find("choosing") then
             return false
         end
         
@@ -164,7 +164,7 @@ local function checkIfKiller(player)
             
             if (lpTeam:find("child") or lpTeam:find("survivor")) then
                 -- Local player adalah survivor. Jika player lain di tim yang beda → killer
-                if lpTeam ~= pTeam and not pTeam:find("lobby") and not pTeam:find("spectator") and not pTeam:find("waiting") then
+                if lpTeam ~= pTeam and not pTeam:find("lobby") and not pTeam:find("spectator") and not pTeam:find("waiting") and not pTeam:find("choosing") then
                     return true
                 end
             end
@@ -671,161 +671,149 @@ local function autoSkillCheck()
             for _, gui in ipairs(playerGui:GetChildren()) do
                 if not gui:IsA("ScreenGui") or not gui.Enabled or gui.Name == "LoriNightmareUltimateHub" then continue end
                 
-                -- Deteksi GUI minigame berdasarkan nama (cepat, tanpa scan descendants)
                 local gName = gui.Name:lower()
-                local isMinigameGui = gName:find("repair") or gName:find("tv") or
-                   gName:find("skill") or gName:find("qte") or gName:find("kaset") or
-                   gName:find("tape") or gName:find("cassette") or gName:find("minigame") or
-                   gName:find("barminigame") or gName:find("interact") or gName:find("television") or
-                   -- Cek elemen khas (sekali saja, lebih ringan dari scan teks)
-                   gui:FindFirstChild("Circle", true) or gui:FindFirstChild("Ball", true) or
-                   gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Coin", true) or
-                   gui:FindFirstChild("GoldNoCoin", true) or gui:FindFirstChild("Goal", true)
                 
-                if not isMinigameGui then continue end
-                
-                local guiKey = tostring(gui):sub(-8)
-                
-                local function isGuiVisible(obj)
-                    if not obj or not obj:IsA("GuiObject") then return false end
-                    local cur = obj
-                    while cur and cur:IsA("GuiObject") do
-                        if not cur.Visible then return false end
-                        cur = cur.Parent
+                -- PROSES HANYA DUA SCREEN GUI INI SAJA (sangat aman, bebas klik-klik gajelas di luar minigame)
+                if gName == "barminigame" or gName == "minigame" then
+                    local guiKey = tostring(gui):sub(-8)
+                    
+                    local function isGuiVisible(obj)
+                        if not obj or not obj:IsA("GuiObject") then return false end
+                        local cur = obj
+                        while cur and cur:IsA("GuiObject") do
+                            if not cur.Visible then return false end
+                            cur = cur.Parent
+                        end
+                        local layer = obj:FindFirstAncestorWhichIsA("LayerCollector")
+                        return not (layer and not layer.Enabled)
                     end
-                    local layer = obj:FindFirstAncestorWhichIsA("LayerCollector")
-                    return not (layer and not layer.Enabled)
-                end
-                
-                -- Helper klik button apapun
-                local function clickBtn(btn)
-                    if not btn then return end
-                    task.spawn(function()
-                        if firesignal then
+                    
+                    -- Helper klik button apapun
+                    local function clickBtn(btn)
+                        if not btn then return end
+                        task.spawn(function()
+                            if firesignal then
+                                pcall(function() btn:Activate() end)
+                                pcall(function() firesignal(btn.MouseButton1Click) end)
+                                pcall(function() firesignal(btn.MouseButton1Down) end)
+                                pcall(function() firesignal(btn.Activated) end)
+                                return
+                            end
+                            if getconnections then
+                                pcall(function() btn:Activate() end)
+                                for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
+                                for _, c in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() c:Fire() end) end
+                                for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
+                                return
+                            end
                             pcall(function() btn:Activate() end)
-                            pcall(function() firesignal(btn.MouseButton1Click) end)
-                            pcall(function() firesignal(btn.MouseButton1Down) end)
-                            pcall(function() firesignal(btn.Activated) end)
-                            return
-                        end
-                        if getconnections then
-                            pcall(function() btn:Activate() end)
-                            for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
-                            for _, c in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() c:Fire() end) end
-                            for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
-                            return
-                        end
-                        pcall(function() btn:Activate() end)
-                        local bp = btn.AbsolutePosition
-                        local bs = btn.AbsoluteSize
-                        local cx = bp.X + bs.X / 2
-                        local cy = bp.Y + bs.Y / 2
-                        pcall(function()
-                            VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
-                            task.wait(0.01)
-                            VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
-                        end)
-                    end)
-                end
-                
-                -- =============================================================
-                -- BARMINIGAME QTE (Cassette / Tape Repair)
-                -- SkillCheck TextButton hanya muncul (Visible=true) saat jarum
-                -- berada di zona yang benar — langsung klik saat ditemukan.
-                -- =============================================================
-                if gName == "barminigame" then
-                    local needle = nil
-                    local tape = nil
-                    local skillBtn = nil
-                    
-                    for _, d in ipairs(gui:GetDescendants()) do
-                        if d:IsA("GuiObject") and isGuiVisible(d) then
-                            local dName = d.Name
-                            local sz = d.AbsoluteSize
-                            
-                            -- 1. Cari Jarum (Frame tipis bernama "bar")
-                            if dName == "bar" and d:IsA("Frame") then
-                                if needle == nil or sz.X < needle.AbsoluteSize.X then
-                                    needle = d
-                                end
-                            end
-                            
-                            -- 2. Cari Tape (ImageLabel "img" berukuran sedang/besar)
-                            if (dName == "img" or dName:lower():find("tape") or dName:lower():find("kaset") or dName:lower():find("goal")) and d:IsA("ImageLabel") then
-                                if sz.X >= 40 and sz.X <= 150 then
-                                    tape = d
-                                end
-                            end
-                            
-                            -- 3. Cari Tombol Klik
-                            if (dName == "SkillCheck" or dName == "Button" or dName:lower():find("check")) and (d:IsA("TextButton") or d:IsA("ImageButton")) then
-                                skillBtn = d
-                            end
-                        end
-                    end
-                    
-                    -- Fallback jika tape belum ketemu: cari ImageLabel "img" terbesar
-                    if not tape then
-                        local largestImg = nil
-                        for _, d in ipairs(gui:GetDescendants()) do
-                            if d.Name == "img" and d:IsA("ImageLabel") and isGuiVisible(d) then
-                                if largestImg == nil or d.AbsoluteSize.X > largestImg.AbsoluteSize.X then
-                                    largestImg = d
-                                end
-                            end
-                        end
-                        tape = largestImg
-                    end
-                    
-                    -- Klik dan tekan Spacebar ketika jarum berada di dalam area tape
-                    if needle and tape and not justPressed[guiKey] then
-                        local needleCenter = needle.AbsolutePosition.X + needle.AbsoluteSize.X / 2
-                        local tapeLeft     = tape.AbsolutePosition.X
-                        local tapeRight    = tapeLeft + tape.AbsoluteSize.X
-                        
-                        -- Cek overlap (toleransi 5 pixel agar registrasi sempurna)
-                        local tolerance = 5
-                        if needleCenter >= (tapeLeft - tolerance) and needleCenter <= (tapeRight + tolerance) then
-                            justPressed[guiKey] = true
-                            
-                            -- Klik tombol SkillCheck jika ada
-                            if skillBtn then
-                                clickBtn(skillBtn)
-                            end
-                            
-                            -- Kirim input Spacebar
-                            pressSpace()
-                            
-                            -- Jeda agar tidak terjadi klik ganda
-                            task.delay(0.5, function()
-                                justPressed[guiKey] = false
+                            local bp = btn.AbsolutePosition
+                            local bs = btn.AbsoluteSize
+                            local cx = bp.X + bs.X / 2
+                            local cy = bp.Y + bs.Y / 2
+                            pcall(function()
+                                VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                                task.wait(0.01)
+                                VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
                             end)
-                        end
+                        end)
                     end
                     
-                else
-                -- =============================================================
-                -- CIRCLE / COIN QTE — klik Coin, GoldNoCoin, dan Template (Minigame)
-                -- =============================================================
-                    for _, btn in ipairs(gui:GetDescendants()) do
-                        if not (btn:IsA("ImageButton") or btn:IsA("TextButton")) then continue end
-                        if not isGuiVisible(btn) then continue end
-                        local sz   = btn.AbsoluteSize
-                        local bpos = btn.AbsolutePosition
-                        if sz.X < 5 or sz.Y < 5 or sz.X > 500 or sz.Y > 500 then continue end
-                        if bpos.X < 0 or bpos.Y < 0 then continue end
+                    if gName == "barminigame" then
+                        -- =============================================================
+                        -- BARMINIGAME QTE (Cassette / Tape Repair)
+                        -- =============================================================
+                        local needle = nil
+                        local tape = nil
+                        local skillBtn = nil
                         
-                        local btnName = btn.Name
-                        
-                        -- Untuk GUI Minigame: klik Coin, GoldNoCoin, dan Template yang visible (skip Empty)
-                        if gName == "minigame" then
-                            if btnName ~= "Coin" and btnName ~= "GoldNoCoin" and btnName ~= "Template" then continue end
-                        else
-                            -- GUI lain: skip SkillCheck saja
-                            if btnName == "SkillCheck" then continue end
+                        for _, d in ipairs(gui:GetDescendants()) do
+                            if d:IsA("GuiObject") and isGuiVisible(d) then
+                                local dName = d.Name
+                                local sz = d.AbsoluteSize
+                                
+                                -- 1. Cari Jarum (Frame tipis bernama "bar")
+                                if dName == "bar" and d:IsA("Frame") then
+                                    if needle == nil or sz.X < needle.AbsoluteSize.X then
+                                        needle = d
+                                    end
+                                end
+                                
+                                -- 2. Cari Tape (ImageLabel "img" berukuran sedang/besar)
+                                if (dName == "img" or dName:lower():find("tape") or dName:lower():find("kaset") or dName:lower():find("goal")) and d:IsA("ImageLabel") then
+                                    if sz.X >= 40 and sz.X <= 150 then
+                                        tape = d
+                                    end
+                                end
+                                
+                                -- 3. Cari Tombol Klik
+                                if (dName == "SkillCheck" or dName == "Button" or dName:lower():find("check")) and (d:IsA("TextButton") or d:IsA("ImageButton")) then
+                                    skillBtn = d
+                                end
+                            end
                         end
                         
-                        clickBtn(btn)
+                        -- Fallback jika tape belum ketemu: cari ImageLabel "img" terbesar
+                        if not tape then
+                            local largestImg = nil
+                            for _, d in ipairs(gui:GetDescendants()) do
+                                if d.Name == "img" and d:IsA("ImageLabel") and isGuiVisible(d) then
+                                    if largestImg == nil or d.AbsoluteSize.X > largestImg.AbsoluteSize.X then
+                                        largestImg = d
+                                    end
+                                end
+                            end
+                            tape = largestImg
+                        end
+                        
+                        -- Klik dan tekan Spacebar ketika jarum berada di dalam area tape
+                        if needle and tape and not justPressed[guiKey] then
+                            -- Pastikan ukuran dan posisi kaset/jarum sudah ter-render (>0) sebelum mendeteksi posisi
+                            if needle.AbsoluteSize.X > 0 and tape.AbsoluteSize.X > 0 and tape.AbsolutePosition.X > 0 and needle.AbsolutePosition.X > 0 then
+                                local needleCenter = needle.AbsolutePosition.X + needle.AbsoluteSize.X / 2
+                                local tapeLeft     = tape.AbsolutePosition.X
+                                local tapeRight    = tapeLeft + tape.AbsoluteSize.X
+                                
+                                -- Cek overlap (toleransi 5 pixel agar registrasi sempurna)
+                                local tolerance = 5
+                                if needleCenter >= (tapeLeft - tolerance) and needleCenter <= (tapeRight + tolerance) then
+                                    justPressed[guiKey] = true
+                                    
+                                    -- Klik tombol SkillCheck jika ada
+                                    if skillBtn then
+                                        clickBtn(skillBtn)
+                                    end
+                                    
+                                    -- Kirim input Spacebar
+                                    pressSpace()
+                                    
+                                    -- Jeda agar tidak terjadi klik ganda
+                                    task.delay(0.5, function()
+                                        justPressed[guiKey] = false
+                                    end)
+                                end
+                            end
+                        end
+                        
+                    elseif gName == "minigame" then
+                        -- =============================================================
+                        -- CIRCLE / COIN QTE — klik Coin, GoldNoCoin, dan Template (Minigame)
+                        -- =============================================================
+                        for _, btn in ipairs(gui:GetDescendants()) do
+                            if not (btn:IsA("ImageButton") or btn:IsA("TextButton")) then continue end
+                            if not isGuiVisible(btn) then continue end
+                            local sz   = btn.AbsoluteSize
+                            local bpos = btn.AbsolutePosition
+                            if sz.X < 5 or sz.Y < 5 or sz.X > 500 or sz.Y > 500 then continue end
+                            if bpos.X < 0 or bpos.Y < 0 then continue end
+                            
+                            local btnName = btn.Name
+                            
+                            -- Untuk GUI Minigame: klik Coin, GoldNoCoin, dan Template yang visible (skip Empty)
+                            if btnName ~= "Coin" and btnName ~= "GoldNoCoin" and btnName ~= "Template" then continue end
+                            
+                            clickBtn(btn)
+                        end
                     end
                 end
             end
@@ -1473,7 +1461,9 @@ local function findKillerRoot()
     for _, obj in ipairs(workspace:GetChildren()) do
         if obj:IsA("Model") and obj ~= LocalPlayer.Character then
             local oName = obj.Name:lower()
-            if oName:find("nightmare") or oName:find("killer") or oName:find("monster") or obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") then
+            if oName:find("nightmare") or oName:find("killer") or oName:find("monster") or 
+               oName:find("carnivore") or oName:find("phantom") or oName:find("tarantula") or oName:find("spider") or
+               obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") then
                 local root = obj:FindFirstChild("HumanoidRootPart")
                 if root then return root end
             end
@@ -1484,7 +1474,8 @@ local function findKillerRoot()
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("Model") and obj ~= LocalPlayer.Character then
             local oName = obj.Name:lower()
-            if oName:find("nightmare") or oName:find("killer") or obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") then
+            if oName:find("nightmare") or oName:find("killer") or obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") or
+               oName:find("carnivore") or oName:find("phantom") or oName:find("tarantula") or oName:find("spider") then
                 local root = obj:FindFirstChild("HumanoidRootPart")
                 if root then return root end
             end
@@ -1496,7 +1487,7 @@ local function findKillerRoot()
         if p ~= LocalPlayer and p.Character then
             local pHum = p.Character:FindFirstChildOfClass("Humanoid")
             local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
-            if pHum and pRoot and pHum.WalkSpeed > 22 then
+            if pHum and pRoot and pHum.WalkSpeed > 22 and checkIfKiller(p) then
                 return pRoot
             end
         end

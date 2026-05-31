@@ -82,26 +82,28 @@ end
 -- LOGIKA PEMUATAN FONT TTF KUSTOM DINAMIS
 -- ==========================================
 local customFont = nil
+local customFontBold = nil
 if LOCAL_FONT_NAME ~= "" and getcustomasset then
-    local fontExists = pcall(function()
-        return readfile(LOCAL_FONT_NAME)
+    local successAsset, assetId = pcall(function()
+        return getcustomasset(LOCAL_FONT_NAME)
     end)
-    
-    if fontExists then
-        local successAsset, assetId = pcall(function()
-            return getcustomasset(LOCAL_FONT_NAME)
+    if successAsset and assetId and assetId ~= "" then
+        pcall(function()
+            customFont = Font.new(assetId)
         end)
-        if successAsset and assetId then
-            pcall(function()
-                customFont = Font.new(assetId)
-            end)
-        end
+        pcall(function()
+            customFontBold = Font.new(assetId, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+        end)
     end
 end
 
 -- Helper untuk Menerapkan Font ke UI Element
 local function applyFont(element, isBold)
-    if customFont then
+    if isBold and customFontBold then
+        pcall(function()
+            element.FontFace = customFontBold
+        end)
+    elseif customFont then
         pcall(function()
             element.FontFace = customFont
         end)
@@ -193,25 +195,82 @@ local function checkIfKiller(player)
     return false
 end
 
+-- Helper: Cek Apakah TV Sudah Selesai Diperbaiki
+local function isTVCompleted(tvPart)
+    if not tvPart or not tvPart.Parent then return true end
+    
+    -- Sensor 1: Check ProximityPrompt
+    local prompt = tvPart:FindFirstChildOfClass("ProximityPrompt") or tvPart.Parent:FindFirstChildOfClass("ProximityPrompt")
+    if prompt then
+        if not prompt.Enabled then
+            return true
+        end
+        local act = prompt.ActionText:lower()
+        local obj = prompt.ObjectText:lower()
+        if not (act:find("repair") or act:find("fix") or act:find("restore") or obj:find("tv") or obj:find("television")) then
+            return true
+        end
+    end
+    
+    -- Sensor 2: Check Attributes & Value Objects
+    for _, target in ipairs({tvPart, tvPart.Parent}) do
+        if target then
+            -- Status Attributes
+            if target:GetAttribute("Repaired") == true or target:GetAttribute("Completed") == true or target:GetAttribute("Finished") == true or target:GetAttribute("Done") == true or target:GetAttribute("IsRepaired") == true then
+                return true
+            end
+            
+            -- Progress Attributes (0-100% or 0-1.0)
+            local prog = target:GetAttribute("Progress") or target:GetAttribute("RepairProgress") or target:GetAttribute("Percent")
+            if type(prog) == "number" then
+                if prog >= 100 or (prog >= 1 and prog <= 1.05) then
+                    return true
+                end
+            end
+            
+            -- Value Objects
+            local repairedVal = target:FindFirstChild("Repaired") or target:FindFirstChild("Completed") or target:FindFirstChild("Finished") or target:FindFirstChild("Done")
+            if repairedVal and (repairedVal:IsA("BoolValue") or repairedVal:IsA("ValueObject")) then
+                if repairedVal.Value == true then
+                    return true
+                end
+            end
+            
+            local progressVal = target:FindFirstChild("Progress") or target:FindFirstChild("RepairProgress") or target:FindFirstChild("Percent")
+            if progressVal and (progressVal:IsA("NumberValue") or progressVal:IsA("IntValue")) then
+                local val = progressVal.Value
+                if val >= 100 or (val >= 1 and val <= 1.05) then
+                    return true
+                end
+            end
+        end
+    end
+    
+    return false
+end
+
 -- Helper: Sensor TV Adaptif (ProximityPrompt)
 local function findTVs()
     local tvList = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("ProximityPrompt") then
+        if obj:IsA("ProximityPrompt") and obj.Enabled then
             local actionText = obj.ActionText:lower()
             local objectText = obj.ObjectText:lower()
             
-            if actionText:find("repair") or actionText:find("fix") or actionText:find("restore") or objectText:find("tv") or objectText:find("television") or objectText:find("generator") then
+            if actionText:find("repair") or actionText:find("fix") or actionText:find("restore") or objectText:find("tv") or objectText:find("television") then
                 local tvPart = obj.Parent
+                local finalPart = nil
+                
                 if tvPart and tvPart:IsA("BasePart") then
-                    table.insert(tvList, tvPart)
+                    finalPart = tvPart
                 elseif tvPart and tvPart:IsA("Model") and tvPart.PrimaryPart then
-                    table.insert(tvList, tvPart.PrimaryPart)
+                    finalPart = tvPart.PrimaryPart
                 elseif tvPart and tvPart:IsA("Model") then
-                    local meshPart = tvPart:FindFirstChildWhichIsA("BasePart", true)
-                    if meshPart then
-                        table.insert(tvList, meshPart)
-                    end
+                    finalPart = tvPart:FindFirstChildWhichIsA("BasePart", true)
+                end
+                
+                if finalPart and not isTVCompleted(finalPart) then
+                    table.insert(tvList, finalPart)
                 end
             end
         end
@@ -219,8 +278,10 @@ local function findTVs()
     
     if #tvList == 0 then
         for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") and (obj.Name:lower():find("tv") or obj.Name:lower():find("television") or obj.Name:lower():find("gen") or obj.Name:lower():find("generator")) then
-                table.insert(tvList, obj)
+            if obj:IsA("BasePart") and (obj.Name:lower():find("tv") or obj.Name:lower():find("television")) then
+                if not isTVCompleted(obj) then
+                    table.insert(tvList, obj)
+                end
             end
         end
     end
@@ -583,25 +644,61 @@ local function autoSkillCheck()
             for _, container in ipairs(searchContainers) do
                 if container then
                     for _, gui in ipairs(container:GetChildren()) do
-                        if gui:IsA("ScreenGui") and gui.Enabled then
+                        -- Skip GUI buatan hub kita agar tidak salah klik
+                        if gui:IsA("ScreenGui") and gui.Enabled and gui.Name ~= "LoriNightmareUltimateHub" then
                             local gName = gui.Name:lower()
                             
-                            if gName:find("repair") or gName:find("tv") or gName:find("skill") or gName:find("qte") or gName:find("kaset") or gName:find("tape") or gName:find("cassette") or gName:find("minigame") or gName:find("play") or gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) then
+                            -- Deteksi ScreenGui yang relevan dengan minigame / QTE
+                            if gName:find("repair") or gName:find("tv") or gName:find("skill") or gName:find("qte") or gName:find("kaset") or gName:find("tape") or gName:find("cassette") or gName:find("minigame") or gName:find("play") or gName:find("interaction") or gName:find("interact") or gName:find("television") or
+                               gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Circle", true) or gui:FindFirstChild("Ball", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Pointer", true) then
                                 
-                                -- 1. SENSOR PETA LINGKARAN (Circle Skillcheck)
+                                -- 1. SENSOR PETA LINGKARAN (Circle Skillcheck / Click Ball)
                                 for _, btn in ipairs(gui:GetDescendants()) do
-                                    if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and btn.Visible and btn.Active then
-                                        pcall(function()
-                                            btn:Activate()
-                                            if getconnections then
-                                                for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do conn:Fire() end
-                                                for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do conn:Fire() end
+                                    if (btn:IsA("ImageButton") or btn:IsA("TextButton") or btn:IsA("ImageLabel") or btn:IsA("Frame")) and btn.Visible then
+                                        local bName = btn.Name:lower()
+                                        local parentName = btn.Parent and btn.Parent.Name:lower() or ""
+                                        
+                                        -- Cek apakah elemen ini merupakan target klik lingkaran
+                                        if bName:find("circle") or bName:find("ball") or bName:find("click") or bName:find("tap") or bName:find("node") or bName:find("target") or bName:find("button") or bName:find("ring") or bName:find("hit") or
+                                           parentName:find("circle") or parentName:find("ball") or parentName:find("click") or parentName:find("tap") or parentName:find("target") or
+                                           (btn:IsA("ImageButton") or btn:IsA("TextButton")) then
+                                            
+                                            local size = btn.AbsoluteSize
+                                            local pos = btn.AbsolutePosition
+                                            
+                                            -- Pastikan elemen memiliki ukuran fisik dan ada di layar
+                                            if size.X > 5 and size.Y > 5 and pos.X >= 0 and pos.Y >= 0 then
+                                                pcall(function()
+                                                    -- A. Method 1: Activate standard button
+                                                    if btn:IsA("ImageButton") or btn:IsA("TextButton") then
+                                                        btn:Activate()
+                                                    end
+                                                    
+                                                    -- B. Method 2: Fire standard connections (click, down, activated, inputbegan)
+                                                    if getconnections then
+                                                        if btn:IsA("ImageButton") or btn:IsA("TextButton") then
+                                                            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do conn:Fire() end
+                                                            for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do conn:Fire() end
+                                                            for _, conn in ipairs(getconnections(btn.Activated)) do conn:Fire() end
+                                                        end
+                                                        for _, conn in ipairs(getconnections(btn.InputBegan)) do
+                                                            pcall(function() conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end)
+                                                        end
+                                                    end
+                                                    
+                                                    -- C. Method 3: VirtualInputManager click (paling bulletproof & mem-bypass proteksi custom UI)
+                                                    local centerX = pos.X + (size.X / 2)
+                                                    local centerY = pos.Y + (size.Y / 2)
+                                                    VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
+                                                    task.wait(0.01)
+                                                    VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
+                                                end)
                                             end
-                                        end)
+                                        end
                                     end
                                 end
                                 
-                                -- 2. SENSOR KASET TAPE DENGAN BAR ALIGNMENT & KEYBOARD EMULATOR
+                                -- 2. SENSOR KASET TAPE DENGAN BAR ALIGNMENT & KEYBOARD EMULATOR (Spacebar QTE)
                                 local pointer = gui:FindFirstChild("Pointer", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Bar", true) or gui:FindFirstChild("Pin", true) or gui:FindFirstChild("Indicator", true)
                                 local zone = gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("GreenBar", true) or gui:FindFirstChild("PerfectZone", true)
                                 
@@ -610,7 +707,11 @@ local function autoSkillCheck()
                                     local zPos = zone.AbsolutePosition
                                     local zSize = zone.AbsoluteSize
                                     
-                                    if pPos.X >= (zPos.X - 5) and pPos.X <= (zPos.X + zSize.X + 5) then
+                                    -- Check overlap horizontal & vertical
+                                    local hOverlap = pPos.X >= (zPos.X - 5) and pPos.X <= (zPos.X + zSize.X + 5)
+                                    local vOverlap = pPos.Y >= (zPos.Y - 5) and pPos.Y <= (zPos.Y + zSize.Y + 5)
+                                    
+                                    if hOverlap or vOverlap then
                                         pcall(function()
                                             VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
                                             task.wait(0.01)
@@ -774,14 +875,56 @@ local function toggleCoinESP(state)
     end
 end
 
+local tvEspThread = nil
 local function toggleTvESP(state)
     espTvsActive = state
     if espTvsActive then
-        local tvs = findTVs()
-        for _, tvPart in ipairs(tvs) do
-            createObjectESP(tvPart, Theme.Blue, "📺 TV Generator", tvEspBoxes)
+        -- Hapus ESP lama jika ada
+        for _, bgui in ipairs(tvEspBoxes) do
+            if bgui and bgui.Parent then bgui:Destroy() end
         end
+        tvEspBoxes = {}
+        
+        -- Loop pembaruan dinamis agar TV yang selesai langsung disembunyikan ESP-nya
+        tvEspThread = task.spawn(function()
+            while espTvsActive do
+                local tvs = findTVs()
+                
+                -- Update status ESP TV
+                for _, tvPart in ipairs(tvs) do
+                    if tvPart and tvPart:IsA("BasePart") then
+                        local completed = isTVCompleted(tvPart)
+                        local existingESP = tvPart:FindFirstChild("ObjectESP")
+                        
+                        if completed then
+                            if existingESP then
+                                existingESP:Destroy()
+                            end
+                        else
+                            if not existingESP then
+                                createObjectESP(tvPart, Theme.Blue, "📺 TV", tvEspBoxes)
+                            end
+                        end
+                    end
+                end
+                
+                -- Hapus ESP dari daftar jika TV sudah dihancurkan / tidak valid
+                for i = #tvEspBoxes, 1, -1 do
+                    local bgui = tvEspBoxes[i]
+                    if not bgui or not bgui.Parent or not bgui.Parent.Parent then
+                        table.remove(tvEspBoxes, i)
+                    end
+                end
+                
+                task.wait(1) -- Perbarui setiap 1 detik
+            end
+        end)
     else
+        if tvEspThread then
+            pcall(function() task.cancel(tvEspThread) end)
+            tvEspThread = nil
+        end
+        
         for _, bgui in ipairs(tvEspBoxes) do
             if bgui and bgui.Parent then bgui:Destroy() end
         end
@@ -791,7 +934,7 @@ end
 
 CreateToggle(EspCard, "Show Active Players (ESP)", UDim2.new(0, 10, 0, 35), false, togglePlayerESP)
 CreateToggle(EspCard, "Show Coins (ESP)", UDim2.new(0, 10, 0, 75), false, toggleCoinESP)
-CreateToggle(EspCard, "Show TVs / Generators (ESP)", UDim2.new(0, 10, 0, 115), false, toggleTvESP)
+CreateToggle(EspCard, "Show TVs (ESP)", UDim2.new(0, 10, 0, 115), false, toggleTvESP)
 
 -- ==========================================
 -- IMPLEMENTASI TAB: PLAYER (SPEED & PHYSICALS)

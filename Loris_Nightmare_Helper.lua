@@ -681,26 +681,51 @@ local function autoSkillCheck()
                 local guiKey = tostring(gui):sub(-8) -- pakai suffix unik memory address
                 
                 -- ==============================================================
-                -- BAGIAN A: QTE Lingkaran (Klik Semua Tombol di Minigame GUI)
-                -- Klik SEMUA ImageButton/TextButton yang visible & ukuran wajar.
-                -- Tidak perlu filter nama karena GUI sudah dipastikan adalah minigame.
+                -- BAGIAN A: QTE Lingkaran - Klik semua tombol visible di minigame GUI
+                -- Gunakan isGuiVisible untuk cek parent chain, plus 3 metode klik berbeda
                 -- ==============================================================
+                local function isGuiVisible(obj)
+                    if not obj or not obj:IsA("GuiObject") then return false end
+                    local cur = obj
+                    while cur and cur:IsA("GuiObject") do
+                        if not cur.Visible then return false end
+                        cur = cur.Parent
+                    end
+                    local layer = obj:FindFirstAncestorWhichIsA("LayerCollector")
+                    return not (layer and not layer.Enabled)
+                end
+                
                 for _, btn in ipairs(gui:GetDescendants()) do
-                    if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and btn.Visible then
+                    if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and isGuiVisible(btn) then
                         local sz = btn.AbsoluteSize
-                        -- Klik tombol yang ukurannya wajar (bukan terlalu kecil/terlalu besar)
-                        if sz.X > 10 and sz.Y > 10 and sz.X < 500 and sz.Y < 500 then
+                        local pos = btn.AbsolutePosition
+                        if sz.X > 5 and sz.Y > 5 and sz.X < 500 and sz.Y < 500 and pos.X >= 0 and pos.Y >= 0 then
                             task.spawn(function()
+                                -- Method 1: firesignal
+                                if firesignal then
+                                    pcall(function() btn:Activate() end)
+                                    pcall(function() firesignal(btn.MouseButton1Click) end)
+                                    pcall(function() firesignal(btn.MouseButton1Down) end)
+                                    pcall(function() firesignal(btn.Activated) end)
+                                    return
+                                end
+                                -- Method 2: getconnections
                                 if getconnections then
                                     pcall(function() btn:Activate() end)
                                     for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
+                                    for _, c in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() c:Fire() end) end
                                     for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
-                                elseif firesignal then
-                                    pcall(function() btn:Activate() end)
-                                    pcall(function() firesignal(btn.MouseButton1Click) end)
-                                else
-                                    pcall(function() btn:Activate() end)
+                                    return
                                 end
+                                -- Method 3: VirtualInputManager mouse click (fallback)
+                                pcall(function() btn:Activate() end)
+                                local cx = pos.X + sz.X / 2
+                                local cy = pos.Y + sz.Y / 2
+                                pcall(function()
+                                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                                    task.wait(0.01)
+                                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                                end)
                             end)
                         end
                     end
@@ -1113,35 +1138,13 @@ end
 
 -- Helper: Cari Root Part Milik Killer (Mendukung Player & NPC/Bot Monster di Workspace)
 local function findKillerRoot()
-    -- 1. Cari Killer sebagai Player menggunakan perbandingan tim langsung
-    -- Di Lori's Nightmare: local player = tim "Children", Killer = tim "Nightmare"
+    -- 1. Cari Killer sebagai Player (gunakan checkIfKiller yang sudah terbukti bekerja)
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then
+        if p ~= LocalPlayer and checkIfKiller(p) then
             local char = p.Character
             local root = char and char:FindFirstChild("HumanoidRootPart")
             if root then
-                -- Cek tim: jika local player punya tim dan tim berbeda → killer
-                if LocalPlayer.Team and p.Team then
-                    if LocalPlayer.Team ~= p.Team then
-                        return root
-                    end
-                elseif p.Team then
-                    -- Local player tidak punya tim, cek nama tim player ini
-                    local tName = p.Team.Name:lower()
-                    if tName:find("nightmare") or tName:find("killer") or tName:find("monster") then
-                        return root
-                    end
-                else
-                    -- Tidak ada tim sama sekali: cek atribut IsKiller/IsNightmare
-                    if p:GetAttribute("IsKiller") == true or p:GetAttribute("IsNightmare") == true then
-                        return root
-                    end
-                    -- Cek nama model karakter
-                    local cName = char.Name:lower()
-                    if cName == "nightmare" or cName == "carnivore" or cName == "phantom" or cName == "tarantula" then
-                        return root
-                    end
-                end
+                return root
             end
         end
     end
@@ -1152,9 +1155,7 @@ local function findKillerRoot()
             local oName = obj.Name:lower()
             if oName:find("nightmare") or oName:find("killer") or oName:find("monster") or obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") then
                 local root = obj:FindFirstChild("HumanoidRootPart")
-                if root then
-                    return root
-                end
+                if root then return root end
             end
         end
     end
@@ -1165,9 +1166,7 @@ local function findKillerRoot()
             local oName = obj.Name:lower()
             if oName:find("nightmare") or oName:find("killer") or obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") then
                 local root = obj:FindFirstChild("HumanoidRootPart")
-                if root then
-                    return root
-                end
+                if root then return root end
             end
         end
     end
@@ -1179,20 +1178,15 @@ end
 local isAutoFollowKiller = false
 local function autoFollowKillerLoop()
     while isAutoFollowKiller do
-        task.wait(0.1)
+        task.wait(0.08)
         if isPlayerKnocked() then
             local killerRoot = findKillerRoot()
             local char = LocalPlayer.Character
             local root = char and char:FindFirstChild("HumanoidRootPart")
             
             if root and killerRoot then
-                -- Posisi downed: di samping killer di level tanah.
-                -- HumanoidRootPart killer berada ~1.5 stud di atas tanah (hip height).
-                -- Y=-1.5 dari HRP killer = permukaan tanah. +0.5 = posisi downed natural.
-                -- Gunakan posisi world langsung (bukan relative CFrame killer) untuk menghindari rotasi yang aneh.
-                local killerPos = killerRoot.Position
-                local groundY = killerPos.Y - 1.0 -- estimasi permukaan tanah dari posisi HRP killer
-                root.CFrame = CFrame.new(killerPos.X + 2.5, groundY, killerPos.Z)
+                -- Versi yang terbukti WORK: 3 stud di atas, 2 stud di belakang killer
+                root.CFrame = killerRoot.CFrame * CFrame.new(0, 3, 2)
             end
         end
     end

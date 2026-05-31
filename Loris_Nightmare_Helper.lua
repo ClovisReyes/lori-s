@@ -1,0 +1,970 @@
+--[[
+    ========================================================================
+     LORI'S NIGHTMARE - ULTIMATE UTILITY & EXPLOIT HUB (ROBLOX LUA)
+    ========================================================================
+     Aesthetics: Ultra-Modern Dark Theme, Purple Violet Neon Gradient, Soft Borders
+     Target: Lori's Nightmare Roblox (Dead by Daylight / Flee the Facility Style)
+     Platform Compatibility: All major Executors (Solara, Wave, Delta, Codex, Hydrogen)
+     Auto-bypass CoreGui safety & Persistent on respawn.
+    ========================================================================
+--]]
+
+-- ==========================================
+-- 0. CONFIG LOGO KUSTOM (GAMBAR 'N' DONGKER)
+-- ==========================================
+-- Upload logo kustom Anda ke Roblox sebagai Decal/Image, lalu masukkan ID-nya di sini!
+-- Jika Anda belum menguploadnya, script akan merender huruf 'N' putih dengan gradasi
+-- biru dongker neon yang sangat mirip dengan logo yang Anda kirimkan.
+local MINIMIZE_LOGO_ID = "rbxassetid://18055673030" -- ID Decal / Image dari logo N Anda
+
+-- Services
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- Target Parent (CoreGui untuk Executor agar aman, PlayerGui untuk Roblox Studio)
+local TargetParent = nil
+local success = pcall(function()
+    TargetParent = game:GetService("CoreGui")
+end)
+if not success or not TargetParent then
+    TargetParent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+-- Bersihkan menu lama jika ada
+if TargetParent:FindFirstChild("LoriNightmareUltimateHub") then
+    TargetParent.LoriNightmareUltimateHub:Destroy()
+end
+
+-- ==========================================
+-- 1. UTAMA & STYLING CONFIG (THEME PALETTE)
+-- ==========================================
+local Theme = {
+    Background = Color3.fromRGB(15, 15, 20),
+    Sidebar = Color3.fromRGB(10, 10, 14),
+    Accent = Color3.fromRGB(138, 43, 226), -- Royal Purple
+    AccentGradient = Color3.fromRGB(75, 0, 130),
+    TextActive = Color3.fromRGB(255, 255, 255),
+    TextMuted = Color3.fromRGB(150, 150, 160),
+    CardBg = Color3.fromRGB(26, 26, 32),
+    Green = Color3.fromRGB(46, 204, 113), -- Survivor Color
+    Red = Color3.fromRGB(231, 76, 60),    -- Killer Color
+    Blue = Color3.fromRGB(52, 152, 219),
+    Yellow = Color3.fromRGB(241, 196, 15),
+    Font = Enum.Font.GothamSemibold,
+    FontBold = Enum.Font.GothamBold
+}
+
+local function tween(object, info, properties)
+    local tweenObject = TweenService:Create(object, info, properties)
+    tweenObject:Play()
+    return tweenObject
+end
+
+-- Helper: Cek Apakah Player Adalah Killer (The Nightmare)
+local function checkIfKiller(player)
+    -- 1. Cek Team Name
+    if player.Team then
+        local tName = player.Team.Name:lower()
+        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("beast") then
+            return true
+        end
+    end
+    
+    -- 2. Cek Player Attributes (Game Role)
+    local role = player:GetAttribute("Role") or player:GetAttribute("Team") or player:GetAttribute("Class")
+    if role then
+        local rStr = tostring(role):lower()
+        if rStr:find("nightmare") or rStr:find("killer") or rStr:find("monster") then
+            return true
+        end
+    end
+    
+    -- 3. Cek Model Character
+    local char = player.Character
+    if char then
+        if char.Name:lower():find("nightmare") or char:GetAttribute("IsNightmare") or char:GetAttribute("IsKiller") then
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- ==========================================
+-- 2. MEMBUAT INSTANCE GUI UTAMA
+-- ==========================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "LoriNightmareUltimateHub"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = TargetParent
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 580, 0, 380)
+MainFrame.Position = UDim2.new(0.5, -290, 0.5, -190)
+MainFrame.BackgroundColor3 = Theme.Background
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 14)
+MainCorner.Parent = MainFrame
+
+-- Border Ungu Menyala
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Thickness = 1.5
+UIStroke.Color = Theme.Accent
+UIStroke.Transparency = 0.2
+UIStroke.Parent = MainFrame
+
+-- Sidebar Frame
+local Sidebar = Instance.new("Frame")
+Sidebar.Name = "Sidebar"
+Sidebar.Size = UDim2.new(0, 165, 1, 0)
+Sidebar.BackgroundColor3 = Theme.Sidebar
+Sidebar.BorderSizePixel = 0
+Sidebar.Parent = MainFrame
+
+local SidebarCorner = Instance.new("UICorner")
+SidebarCorner.CornerRadius = UDim.new(0, 14)
+SidebarCorner.Parent = Sidebar
+
+-- Judul Game di Sidebar
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(1, 0, 0, 55)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "LORI NIGHTMARE"
+TitleLabel.TextColor3 = Theme.TextActive
+TitleLabel.TextSize = 16
+TitleLabel.Font = Theme.FontBold
+TitleLabel.Parent = Sidebar
+
+local TitleGradient = Instance.new("UIGradient")
+TitleGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Theme.TextActive),
+    ColorSequenceKeypoint.new(1, Theme.Accent)
+})
+TitleGradient.Parent = TitleLabel
+
+-- Sidebar Navigation List
+local NavList = Instance.new("Frame")
+NavList.Name = "NavList"
+NavList.Size = UDim2.new(1, -16, 1, -70)
+NavList.Position = UDim2.new(0, 8, 0, 60)
+NavList.BackgroundTransparency = 1
+NavList.Parent = Sidebar
+
+local NavLayout = Instance.new("UIListLayout")
+NavLayout.Padding = UDim.new(0, 8)
+NavLayout.SortOrder = Enum.SortOrder.LayoutOrder
+NavLayout.Parent = NavList
+
+-- Container untuk Halaman-halaman
+local PagesContainer = Instance.new("Frame")
+PagesContainer.Name = "PagesContainer"
+PagesContainer.Size = UDim2.new(1, -185, 1, -20)
+PagesContainer.Position = UDim2.new(0, 175, 0, 10)
+PagesContainer.BackgroundTransparency = 1
+PagesContainer.Parent = MainFrame
+
+-- ==========================================
+-- 3. FITUR GESER MENU (DRAG SYSTEM)
+-- ==========================================
+local dragToggle = nil
+local dragSpeed = 0.08
+local dragStart = nil
+local startPos = nil
+
+local function updateInput(input)
+    local delta = input.Position - dragStart
+    local position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    tween(MainFrame, TweenInfo.new(dragSpeed), {Position = position})
+end
+
+MainFrame.InputBegan:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        dragToggle = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragToggle = false
+            end
+        end)
+    end
+end)
+
+MainFrame.InputChanged:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragToggle then
+            updateInput(input)
+        end
+    end
+end)
+
+-- ==========================================
+-- 4. SISTEM TAB & NAVIGASI HALAMAN
+-- ==========================================
+local Pages = {}
+
+local function CreatePage(name, isDefault)
+    local PageFrame = Instance.new("Frame")
+    PageFrame.Name = name .. "Page"
+    PageFrame.Size = UDim2.new(1, 0, 1, 0)
+    PageFrame.BackgroundTransparency = 1
+    PageFrame.Visible = isDefault
+    PageFrame.Parent = PagesContainer
+
+    local PageList = Instance.new("UIListLayout")
+    PageList.Padding = UDim.new(0, 10)
+    PageList.SortOrder = Enum.SortOrder.LayoutOrder
+    PageList.Parent = PageFrame
+
+    Pages[name] = PageFrame
+
+    -- Tombol Sidebar
+    local NavBtn = Instance.new("TextButton")
+    NavBtn.Name = name .. "Btn"
+    NavBtn.Size = UDim2.new(1, 0, 0, 38)
+    NavBtn.BackgroundColor3 = isDefault and Theme.Accent or Color3.fromRGB(20, 20, 26)
+    NavBtn.Text = "   " .. name
+    NavBtn.TextColor3 = isDefault and Theme.TextActive or Theme.TextMuted
+    NavBtn.TextSize = 13
+    NavBtn.Font = Theme.Font
+    NavBtn.TextXAlignment = Enum.TextXAlignment.Left
+    NavBtn.AutoButtonColor = false
+    NavBtn.Parent = NavList
+
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 6)
+    BtnCorner.Parent = NavBtn
+
+    -- Hover & Click effects
+    NavBtn.MouseEnter:Connect(function()
+        if PagesContainer[name .. "Page"].Visible == false then
+            tween(NavBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(30, 30, 40), TextColor3 = Theme.TextActive})
+        end
+    end)
+
+    NavBtn.MouseLeave:Connect(function()
+        if PagesContainer[name .. "Page"].Visible == false then
+            tween(NavBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(20, 20, 26), TextColor3 = Theme.TextMuted})
+        end
+    end)
+
+    NavBtn.MouseButton1Click:Connect(function()
+        for pName, pFrame in pairs(Pages) do
+            pFrame.Visible = false
+            local associatedBtn = NavList:FindFirstChild(pName .. "Btn")
+            if associatedBtn then
+                tween(associatedBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(20, 20, 26), TextColor3 = Theme.TextMuted})
+            end
+        end
+        PageFrame.Visible = true
+        tween(NavBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.Accent, TextColor3 = Theme.TextActive})
+    end)
+
+    return PageFrame
+end
+
+-- ==========================================
+-- 5. KONSTRUKSI CARD & ELEMEN INPUT INTERAKTIF
+-- ==========================================
+local function CreateCard(parent, title, height)
+    local Card = Instance.new("Frame")
+    Card.Size = UDim2.new(1, 0, 0, height)
+    Card.BackgroundColor3 = Theme.CardBg
+    Card.BorderSizePixel = 0
+    Card.Parent = parent
+
+    local CardCorner = Instance.new("UICorner")
+    CardCorner.CornerRadius = UDim.new(0, 8)
+    CardCorner.Parent = Card
+
+    local CardTitle = Instance.new("TextLabel")
+    CardTitle.Size = UDim2.new(1, -20, 0, 25)
+    CardTitle.Position = UDim2.new(0, 10, 0, 6)
+    CardTitle.BackgroundTransparency = 1
+    CardTitle.Text = title:upper()
+    CardTitle.TextColor3 = Theme.Accent
+    CardTitle.TextSize = 11
+    CardTitle.Font = Theme.FontBold
+    CardTitle.TextXAlignment = Enum.TextXAlignment.Left
+    CardTitle.Parent = Card
+
+    return Card
+end
+
+local function CreateButton(parent, text, pos, size, callback)
+    local Btn = Instance.new("TextButton")
+    Btn.Size = size
+    Btn.Position = pos
+    Btn.BackgroundColor3 = Theme.Accent
+    Btn.Text = text
+    Btn.TextColor3 = Theme.TextActive
+    Btn.TextSize = 12
+    Btn.Font = Theme.Font
+    Btn.AutoButtonColor = false
+    Btn.Parent = parent
+
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 6)
+    Corner.Parent = Btn
+
+    -- Tween Effects
+    Btn.MouseEnter:Connect(function()
+        tween(Btn, TweenInfo.new(0.15), {Size = UDim2.new(size.X.Scale, size.X.Offset + 4, size.Y.Scale, size.Y.Offset + 2), BackgroundColor3 = Theme.AccentGradient})
+    end)
+    Btn.MouseLeave:Connect(function()
+        tween(Btn, TweenInfo.new(0.15), {Size = size, BackgroundColor3 = Theme.Accent})
+    end)
+    Btn.MouseButton1Down:Connect(function()
+        tween(Btn, TweenInfo.new(0.05), {Size = UDim2.new(size.X.Scale, size.X.Offset - 2, size.Y.Scale, size.Y.Offset - 2)})
+    end)
+    Btn.MouseButton1Up:Connect(function()
+        tween(Btn, TweenInfo.new(0.05), {Size = size})
+        callback()
+    end)
+
+    return Btn
+end
+
+local function CreateToggle(parent, text, pos, defaultState, callback)
+    local ToggleBg = Instance.new("Frame")
+    ToggleBg.Size = UDim2.new(0.9, 0, 0, 32)
+    ToggleBg.Position = pos
+    ToggleBg.BackgroundTransparency = 1
+    ToggleBg.Parent = parent
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.7, 0, 1, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Theme.TextActive
+    Label.TextSize = 13
+    Label.Font = Theme.Font
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = ToggleBg
+
+    local Switch = Instance.new("TextButton")
+    Switch.Size = UDim2.new(0, 45, 0, 22)
+    Switch.Position = UDim2.new(1, -45, 0.5, -11)
+    Switch.BackgroundColor3 = defaultState and Theme.Green or Color3.fromRGB(50, 50, 60)
+    Switch.Text = ""
+    Switch.AutoButtonColor = false
+    Switch.Parent = ToggleBg
+
+    local SwitchCorner = Instance.new("UICorner")
+    SwitchCorner.CornerRadius = UDim.new(1, 0)
+    SwitchCorner.Parent = Switch
+
+    local Indicator = Instance.new("Frame")
+    Indicator.Size = UDim2.new(0, 16, 0, 16)
+    Indicator.Position = defaultState and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+    Indicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    Indicator.BorderSizePixel = 0
+    Indicator.Parent = Switch
+
+    local IndicatorCorner = Instance.new("UICorner")
+    IndicatorCorner.CornerRadius = UDim.new(1, 0)
+    IndicatorCorner.Parent = Indicator
+
+    local active = defaultState
+    Switch.MouseButton1Click:Connect(function()
+        active = not active
+        if active then
+            tween(Switch, TweenInfo.new(0.2), {BackgroundColor3 = Theme.Green})
+            tween(Indicator, TweenInfo.new(0.2), {Position = UDim2.new(1, -19, 0.5, -8)})
+        else
+            tween(Switch, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(50, 50, 60)})
+            tween(Indicator, TweenInfo.new(0.2), {Position = UDim2.new(0, 3, 0.5, -8)})
+        end
+        callback(active)
+    end)
+end
+
+-- ==========================================
+-- 6. PEMBUATAN ELEMEN TAB (MAIN, VISUALS, PLAYER)
+-- ==========================================
+local MainTab = CreatePage("Main", true)
+local VisualsTab = CreatePage("Visuals", false)
+local PlayerTab = CreatePage("Player", false)
+
+-- ==========================================
+-- IMPLEMENTASI TAB: MAIN (FARMING & HELPERS)
+-- ==========================================
+local FarmCard = CreateCard(MainTab, "Automations & Farming", 175)
+
+-- Fitur 1: Auto Coin Farm (Teleport & Collect Coins)
+local isFarmingCoins = false
+local function autoFarmCoins()
+    while isFarmingCoins do
+        local character = LocalPlayer.Character
+        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            local foundCoin = false
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj:IsA("BasePart") and (obj.Name:lower():find("coin") or obj.Name:lower():find("token") or obj.Name:lower():find("gold")) then
+                    -- Teleport langsung ke posisi koin
+                    rootPart.CFrame = obj.CFrame
+                    foundCoin = true
+                    task.wait(0.25) -- Jeda kecil agar server meregistrasi pengambilan koin
+                    if not isFarmingCoins then break end
+                end
+            end
+            if not foundCoin then
+                -- Tidak ada koin di map saat ini
+                task.wait(1)
+            end
+        else
+            task.wait(1)
+        end
+    end
+end
+
+CreateToggle(FarmCard, "Auto Coin Farm (Teleport)", UDim2.new(0, 10, 0, 35), false, function(state)
+    isFarmingCoins = state
+    if isFarmingCoins then
+        task.spawn(autoFarmCoins)
+    end
+end)
+
+-- Fitur 1.5: Auto Skill Check (TV Bulat & Kaset Tape)
+local isAutoSkillCheck = false
+local function autoSkillCheck()
+    task.spawn(function()
+        while isAutoSkillCheck do
+            task.wait(0.01) -- Deteksi super cepat untuk akurasi instan
+            local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+            if playerGui then
+                for _, gui in ipairs(playerGui:GetChildren()) do
+                    if gui:IsA("ScreenGui") and gui.Enabled then
+                        local gName = gui.Name:lower()
+                        
+                        -- Deteksi GUI MiniGame / Repair TV / Kaset
+                        if gName:find("repair") or gName:find("tv") or gName:find("skill") or gName:find("qte") or gName:find("kaset") or gName:find("tape") or gName:find("cassette") or gName:find("minigame") then
+                            
+                            -- 1. PETA LINGKARAN (Circle Skillcheck)
+                            -- Otomatis menekan/mengklik tombol lingkaran yang muncul secara instan
+                            for _, btn in ipairs(gui:GetDescendants()) do
+                                if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and btn.Visible and btn.Active then
+                                    pcall(function()
+                                        btn:Activate()
+                                        -- Pastikan executor memanggil koneksi event klik internal
+                                        if getconnections then
+                                            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
+                                                conn:Fire()
+                                            end
+                                            for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do
+                                                conn:Fire()
+                                            end
+                                        end
+                                    end)
+                                end
+                            end
+                            
+                            -- 2. KASET / TAPE MINI-GAME (Needle / Bar Alignment)
+                            -- Mencari Pointer/Needle dan TargetZone di dalam GUI Kaset
+                            local pointer = gui:FindFirstChild("Pointer", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Bar", true) or gui:FindFirstChild("Pin", true)
+                            local zone = gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("GreenBar", true)
+                            
+                            if pointer and zone then
+                                local pPos = pointer.AbsolutePosition
+                                local zPos = zone.AbsolutePosition
+                                local zSize = zone.AbsoluteSize
+                                
+                                -- Cek apakah posisi X/Y jarum penunjuk berada di dalam area target
+                                if pPos.X >= zPos.X and pPos.X <= (zPos.X + zSize.X) then
+                                    -- Eksekusi spacepress secara virtual untuk mencocokkan kaset
+                                    pcall(function()
+                                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                                        task.wait(0.02)
+                                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                    end)
+                                    task.wait(0.1) -- Jeda pengulangan agar tidak double trigger
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+CreateToggle(FarmCard, "Auto Skill Check (TV & Kaset)", UDim2.new(0, 10, 0, 75), false, function(state)
+    isAutoSkillCheck = state
+    if isAutoSkillCheck then
+        autoSkillCheck()
+    end
+end)
+
+-- Fitur 2: Teleport Ke TV Terdekat untuk Perbaikan
+local function teleportToNearestTV()
+    local character = LocalPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+    
+    local nearestTV = nil
+    local shortestDist = math.huge
+    
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and (obj.Name:lower():find("tv") or obj.Name:lower():find("television") or obj.Name:lower():find("gen")) then
+            local dist = (obj.Position - rootPart.Position).Magnitude
+            if dist < shortestDist then
+                shortestDist = dist
+                nearestTV = obj
+            end
+        end
+    end
+    
+    if nearestTV then
+        rootPart.CFrame = nearestTV.CFrame + Vector3.new(0, 3, 0) -- Teleport 3 stud di atas TV
+    end
+end
+
+CreateButton(FarmCard, "Teleport ke TV Terdekat", UDim2.new(0, 10, 0, 120), UDim2.new(0.9, 0, 0, 35), function()
+    teleportToNearestTV()
+end)
+
+-- ==========================================
+-- IMPLEMENTASI TAB: VISUALS (ESP CONTROLS)
+-- ==========================================
+local EspCard = CreateCard(VisualsTab, "Extra Sensory Perception (ESP)", 165)
+
+local espPlayersActive = false
+local espCoinsActive = false
+local espTvsActive = false
+
+local playerEspConns = {}
+local coinEspBoxes = {}
+local tvEspBoxes = {}
+
+-- ESP Player Logic (Highlight modern dengan warna berbeda)
+local function applyPlayerESP(player)
+    if player == LocalPlayer then return end
+    
+    local function highlightChar(char)
+        local root = char:WaitForChild("HumanoidRootPart", 5)
+        if not root then return end
+        
+        -- Hapus highlight lama jika ada
+        if root:FindFirstChild("ESPHighlight") then
+            root.ESPHighlight:Destroy()
+        end
+        
+        -- Deteksi peran player: Killer (Merah), Survivor/Player biasa (Hijau)
+        local isKiller = checkIfKiller(player)
+        local espColor = isKiller and Theme.Red or Theme.Green
+        
+        local hl = Instance.new("Highlight")
+        hl.Name = "ESPHighlight"
+        hl.Adornee = char
+        hl.FillColor = espColor
+        hl.FillTransparency = 0.4
+        hl.OutlineColor = Theme.TextActive
+        hl.OutlineTransparency = 0.1
+        hl.Parent = root
+    end
+    
+    if player.Character then
+        highlightChar(player.Character)
+    end
+    
+    local conn = player.CharacterAdded:Connect(highlightChar)
+    table.insert(playerEspConns, conn)
+end
+
+local function togglePlayerESP(state)
+    espPlayersActive = state
+    if espPlayersActive then
+        for _, p in ipairs(Players:GetPlayers()) do
+            applyPlayerESP(p)
+        end
+        local conn = Players.PlayerAdded:Connect(applyPlayerESP)
+        table.insert(playerEspConns, conn)
+    else
+        for _, c in ipairs(playerEspConns) do
+            c:Disconnect()
+        end
+        playerEspConns = {}
+        
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local hl = p.Character.HumanoidRootPart:FindFirstChild("ESPHighlight")
+                if hl then hl:Destroy() end
+            end
+        end
+    end
+end
+
+-- ESP Object Logic (TV & Coins)
+local function createObjectESP(object, color, name, listTable)
+    if not object:IsA("BasePart") then return end
+    
+    -- Hapus billboard lama jika ada
+    if object:FindFirstChild("ObjectESP") then
+        object.ObjectESP:Destroy()
+    end
+    
+    local bgui = Instance.new("BillboardGui")
+    bgui.Name = "ObjectESP"
+    bgui.Size = UDim2.new(0, 100, 0, 30)
+    bgui.AlwaysOnTop = true
+    bgui.Adornee = object
+    bgui.Parent = object
+    
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.Text = name
+    text.TextColor3 = color
+    text.TextSize = 11
+    text.Font = Theme.FontBold
+    text.Parent = bgui
+    
+    table.insert(listTable, bgui)
+end
+
+local function toggleCoinESP(state)
+    espCoinsActive = state
+    if espCoinsActive then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and (obj.Name:lower():find("coin") or obj.Name:lower():find("token") or obj.Name:lower():find("gold")) then
+                createObjectESP(obj, Theme.Yellow, "🪙 Coin", coinEspBoxes)
+            end
+        end
+    else
+        for _, bgui in ipairs(coinEspBoxes) do
+            if bgui and bgui.Parent then bgui:Destroy() end
+        end
+        coinEspBoxes = {}
+    end
+end
+
+local function toggleTvESP(state)
+    espTvsActive = state
+    if espTvsActive then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and (obj.Name:lower():find("tv") or obj.Name:lower():find("television") or obj.Name:lower():find("gen")) then
+                createObjectESP(obj, Theme.Blue, "📺 TV Generator", tvEspBoxes)
+            end
+        end
+    else
+        for _, bgui in ipairs(tvEspBoxes) do
+            if bgui and bgui.Parent then bgui:Destroy() end
+        end
+        tvEspBoxes = {}
+    end
+end
+
+CreateToggle(EspCard, "Show Active Players (ESP)", UDim2.new(0, 10, 0, 35), false, togglePlayerESP)
+CreateToggle(EspCard, "Show Coins (ESP)", UDim2.new(0, 10, 0, 75), false, toggleCoinESP)
+CreateToggle(EspCard, "Show TVs / Generators (ESP)", UDim2.new(0, 10, 0, 115), false, toggleTvESP)
+
+-- ==========================================
+-- IMPLEMENTASI TAB: PLAYER (SPEED & PHYSICALS)
+-- ==========================================
+local ModifierCard = CreateCard(PlayerTab, "Movement & Physics Modifiers", 120)
+
+-- WalkSpeed Controls
+local speedVal = 16
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(0.4, 0, 0, 30)
+speedLabel.Position = UDim2.new(0, 10, 0, 35)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Text = "WalkSpeed: " .. speedVal
+speedLabel.TextColor3 = Theme.TextActive
+speedLabel.TextSize = 13
+speedLabel.Font = Theme.Font
+speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+speedLabel.Parent = ModifierCard
+
+CreateButton(ModifierCard, "+ Speed", UDim2.new(0.45, 0, 0, 35), UDim2.new(0, 70, 0, 30), function()
+    speedVal = math.min(speedVal + 10, 200)
+    speedLabel.Text = "WalkSpeed: " .. speedVal
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChildOfClass("Humanoid") then
+        char:FindFirstChildOfClass("Humanoid").WalkSpeed = speedVal
+    end
+end)
+
+CreateButton(ModifierCard, "Reset", UDim2.new(0.70, 0, 0, 35), UDim2.new(0, 60, 0, 30), function()
+    speedVal = 16
+    speedLabel.Text = "WalkSpeed: " .. speedVal
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChildOfClass("Humanoid") then
+        char:FindFirstChildOfClass("Humanoid").WalkSpeed = speedVal
+    end
+end)
+
+-- JumpPower Controls
+local jumpVal = 50
+local jumpLabel = Instance.new("TextLabel")
+jumpLabel.Size = UDim2.new(0.4, 0, 0, 30)
+jumpLabel.Position = UDim2.new(0, 10, 0, 75)
+jumpLabel.BackgroundTransparency = 1
+jumpLabel.Text = "JumpPower: " .. jumpVal
+jumpLabel.TextColor3 = Theme.TextActive
+jumpLabel.TextSize = 13
+jumpLabel.Font = Theme.Font
+jumpLabel.TextXAlignment = Enum.TextXAlignment.Left
+jumpLabel.Parent = ModifierCard
+
+CreateButton(ModifierCard, "+ Jump", UDim2.new(0.45, 0, 0, 75), UDim2.new(0, 70, 0, 30), function()
+    jumpVal = math.min(jumpVal + 15, 300)
+    jumpLabel.Text = "JumpPower: " .. jumpVal
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChildOfClass("Humanoid") then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        hum.UseJumpPower = true
+        hum.JumpPower = jumpVal
+    end
+end)
+
+CreateButton(ModifierCard, "Reset", UDim2.new(0.70, 0, 0, 75), UDim2.new(0, 60, 0, 30), function()
+    jumpVal = 50
+    jumpLabel.Text = "JumpPower: " .. jumpVal
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChildOfClass("Humanoid") then
+        char:FindFirstChildOfClass("Humanoid").JumpPower = jumpVal
+    end
+end)
+
+-- Player physics loops (Ensure persistent stats on respawn)
+LocalPlayer.CharacterAdded:Connect(function(char)
+    local hum = char:WaitForChild("Humanoid")
+    hum.WalkSpeed = speedVal
+    if jumpVal ~= 50 then
+        hum.UseJumpPower = true
+        hum.JumpPower = jumpVal
+    end
+end)
+
+-- Bypass & Movement Physics Card (No-clip & Inf Jump)
+local BypassCard = CreateCard(PlayerTab, "Bypass Mechanics", 100)
+
+-- Noclip Toggle
+local noclipConnection = nil
+local isNoclipping = false
+local function toggleNoclip(state)
+    isNoclipping = state
+    if isNoclipping then
+        noclipConnection = RunService.Stepped:Connect(function()
+            local char = LocalPlayer.Character
+            if char then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+    else
+        if noclipConnection then
+            noclipConnection:Disconnect()
+            noclipConnection = nil
+        end
+    end
+end
+
+-- Infinite Jump Toggle
+local infJumpConnection = nil
+local isInfJumping = false
+local function toggleInfJump(state)
+    isInfJumping = state
+    if isInfJumping then
+        infJumpConnection = UserInputService.JumpRequest:Connect(function()
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChildOfClass("Humanoid") then
+                char:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+    else
+        if infJumpConnection then
+            infJumpConnection:Disconnect()
+            infJumpConnection = nil
+        end
+    end
+end
+
+CreateToggle(BypassCard, "Noclip (Walk Through Walls)", UDim2.new(0, 10, 0, 30), false, toggleNoclip)
+CreateToggle(BypassCard, "Infinite Jump in Air", UDim2.new(0, 10, 0, 65), false, toggleInfJump)
+
+-- ==========================================
+-- 7. SISTEM MINIMIZE LOGO (LOGO KUSTOM USER)
+-- ==========================================
+-- Membuat Tombol Floating Persegi Sisi Tumpul dengan fallback text N
+local MinimizeIcon = Instance.new("ImageButton")
+MinimizeIcon.Name = "MinimizeIcon"
+MinimizeIcon.Size = UDim2.new(0, 52, 0, 52)
+MinimizeIcon.Position = UDim2.new(0.05, 0, 0.2, 0)
+MinimizeIcon.BackgroundColor3 = Color3.fromRGB(5, 15, 35) -- Biru dongker menyala gelap matching logo user
+MinimizeIcon.BorderSizePixel = 0
+MinimizeIcon.Image = MINIMIZE_LOGO_ID
+MinimizeIcon.Visible = false
+MinimizeIcon.ClipsDescendants = true
+MinimizeIcon.Parent = ScreenGui
+
+local IconCorner = Instance.new("UICorner")
+IconCorner.CornerRadius = UDim.new(0, 12) -- Persegi Sisi Tumpul (Rounded Square)
+IconCorner.Parent = MinimizeIcon
+
+local IconStroke = Instance.new("UIStroke")
+IconStroke.Thickness = 2
+IconStroke.Color = Color3.fromRGB(0, 85, 255) -- Glowing Neon Blue
+IconStroke.Transparency = 0.2
+IconStroke.Parent = MinimizeIcon
+
+-- Fallback text 'N' putih elegan jika ID gambar belum dimuat
+local FallbackText = Instance.new("TextLabel")
+FallbackText.Size = UDim2.new(1, 0, 1, 0)
+FallbackText.BackgroundTransparency = 1
+FallbackText.Text = "N"
+FallbackText.TextColor3 = Theme.TextActive
+FallbackText.TextSize = 24
+FallbackText.Font = Theme.FontBold
+FallbackText.Parent = MinimizeIcon
+
+if MINIMIZE_LOGO_ID ~= "" and MINIMIZE_LOGO_ID ~= "rbxassetid://18055673030" then
+    FallbackText.Visible = false
+end
+
+-- Membuat Tombol Floating Draggable (Bisa digeser)
+local iconDragToggle = nil
+local iconDragStart = nil
+local iconStartPos = nil
+
+MinimizeIcon.InputBegan:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        iconDragToggle = true
+        iconDragStart = input.Position
+        iconStartPos = MinimizeIcon.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                iconDragToggle = false
+            end
+        end)
+    end
+end)
+
+MinimizeIcon.InputChanged:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        if iconDragToggle then
+            local delta = input.Position - iconDragStart
+            local position = UDim2.new(iconStartPos.X.Scale, iconStartPos.X.Offset + delta.X, iconStartPos.Y.Scale, iconStartPos.Y.Offset + delta.Y)
+            tween(MinimizeIcon, TweenInfo.new(0.08), {Position = position})
+        end
+    end
+end)
+
+-- ==========================================
+-- 8. TOMBOL ACTION: MINIMIZE & CLOSE PADA PANEL UTAMA
+-- ==========================================
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Name = "MinimizeBtn"
+MinimizeBtn.Size = UDim2.new(0, 32, 0, 32)
+MinimizeBtn.Position = UDim2.new(1, -70, 0, 8)
+MinimizeBtn.BackgroundTransparency = 1
+MinimizeBtn.Text = "—"
+MinimizeBtn.TextColor3 = Theme.TextMuted
+MinimizeBtn.TextSize = 14
+MinimizeBtn.Font = Theme.FontBold
+MinimizeBtn.Parent = MainFrame
+
+MinimizeBtn.MouseEnter:Connect(function()
+    tween(MinimizeBtn, TweenInfo.new(0.2), {TextColor3 = Theme.Accent})
+end)
+MinimizeBtn.MouseLeave:Connect(function()
+    tween(MinimizeBtn, TweenInfo.new(0.2), {TextColor3 = Theme.TextMuted})
+end)
+
+-- Fungsi Pemicu Minimize
+MinimizeBtn.MouseButton1Click:Connect(function()
+    -- Animasi menyusutkan main frame dengan halus
+    tween(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 0, 0, 0),
+        Position = MainFrame.Position + UDim2.new(0, 290, 0, 190),
+        BackgroundTransparency = 1
+    })
+    task.wait(0.25)
+    MainFrame.Visible = false
+    
+    -- Memunculkan logo kustom mengambang dengan efek elastic pop-up
+    MinimizeIcon.Visible = true
+    MinimizeIcon.Size = UDim2.new(0, 0, 0, 0)
+    tween(MinimizeIcon, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 52, 0, 52)
+    })
+end)
+
+-- Fungsi Pemicu Maximize (Klik Logo Floating untuk Membuka Kembali)
+MinimizeIcon.MouseButton1Click:Connect(function()
+    if iconDragToggle then return end -- Mencegah trigger klik saat digeser
+    
+    -- Mengecilkan logo floating kembali
+    tween(MinimizeIcon, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+        Size = UDim2.new(0, 0, 0, 0)
+    })
+    task.wait(0.2)
+    MinimizeIcon.Visible = false
+    
+    -- Memunculkan kembali main frame secara utuh dengan elastic pop-up
+    MainFrame.Visible = true
+    tween(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 580, 0, 380),
+        Position = UDim2.new(0.5, -290, 0.5, -190),
+        BackgroundTransparency = 0
+    })
+end)
+
+-- Tombol Tutup GUI (Close Button)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Name = "CloseBtn"
+CloseBtn.Size = UDim2.new(0, 32, 0, 32)
+CloseBtn.Position = UDim2.new(1, -38, 0, 8)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Theme.TextMuted
+CloseBtn.TextSize = 18
+CloseBtn.Font = Theme.FontBold
+CloseBtn.Parent = MainFrame
+
+CloseBtn.MouseEnter:Connect(function()
+    tween(CloseBtn, TweenInfo.new(0.2), {TextColor3 = Theme.Red})
+end)
+CloseBtn.MouseLeave:Connect(function()
+    tween(CloseBtn, TweenInfo.new(0.2), {TextColor3 = Theme.TextMuted})
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    -- Bersihkan dan matikan semua loop aktif
+    isFarmingCoins = false
+    isAutoSkillCheck = false
+    toggleNoclip(false)
+    toggleInfJump(false)
+    togglePlayerESP(false)
+    toggleCoinESP(false)
+    toggleTvESP(false)
+    
+    -- Animasi mengecil saat ditutup permanent
+    tween(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 0, 0, 0),
+        Position = MainFrame.Position + UDim2.new(0, 290, 0, 190),
+        BackgroundTransparency = 1
+    })
+    task.wait(0.3)
+    ScreenGui:Destroy()
+end)
+
+print("[LORI'S ULTIMATE HUB] Berhasil di-inject! Nikmati automasi premium.")

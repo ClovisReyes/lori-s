@@ -683,13 +683,15 @@ local function autoSkillCheck()
                 -- ==============================================================
                 -- BAGIAN B: Deteksi Jarum DULU (sebelum klik tombol)
                 -- Jarum = elemen paling kurus (X<<Y, width<25px) yang bergerak.
-                -- Zona = elemen paling kanan berbentuk kotak.
-                -- Jika jarum ditemukan → ini sliding QTE, SKIP klik tombol.
+                -- Zona = elemen kotak di BAGIAN ATAS layar (bukan di bawah).
+                -- Jika jarum ditemukan → sliding QTE → klik tombol SKILL CHECK.
                 -- ==============================================================
+                local screenH = workspace.CurrentCamera.ViewportSize.Y
                 local needle = nil
-                local minRatio = 0.5 -- jarum harus sangat kurus
+                local minRatio = 0.5
                 local zoneEl = nil
                 local maxZoneX = -math.huge
+                local skillCheckBtn = nil -- tombol SKILL CHECK yang harus diklik
                 
                 for _, child in ipairs(gui:GetDescendants()) do
                     if not child:IsA("GuiObject") or not child.Visible then continue end
@@ -698,14 +700,25 @@ local function autoSkillCheck()
                     local ratio = sz.X / sz.Y
                     local cpos = child.AbsolutePosition
                     
+                    -- Cari tombol SKILL CHECK (klik ini bukan tekan Space)
+                    if child:IsA("TextButton") or child:IsA("ImageButton") then
+                        local childName = child.Name:lower()
+                        local childText = ""
+                        pcall(function() childText = child.Text:lower() end)
+                        if childName:find("skill") or childName:find("check") or childName:find("qte") or
+                           childText:find("skill") or childText:find("check") then
+                            skillCheckBtn = child
+                        end
+                    end
+                    
                     -- Jarum: sangat kurus (X << Y), lebar < 25px, tinggi > 15px
                     if ratio < minRatio and sz.X < 25 and sz.Y > 15 and cpos.X > 0 and cpos.Y > 0 then
                         minRatio = ratio
                         needle = child
                     end
                     
-                    -- Zona: kotak/persegi, minimal 20x15px, paling kanan
-                    if sz.X >= sz.Y * 0.7 and sz.X > 20 and sz.Y > 15 and cpos.X > 0 then
+                    -- Zona: kotak/persegi di BAGIAN ATAS layar saja (cegah SKILL CHECK button ikut terpilih)
+                    if sz.X >= sz.Y * 0.7 and sz.X > 20 and sz.Y > 15 and cpos.X > 0 and cpos.Y < screenH * 0.6 then
                         if cpos.X > maxZoneX then
                             maxZoneX = cpos.X
                             zoneEl = child
@@ -715,7 +728,7 @@ local function autoSkillCheck()
                 
                 if needle and zoneEl and needle ~= zoneEl then
                     -- === SLIDING BAR QTE (Cassette/Kaset) ===
-                    -- Ada jarum bergerak → tekan Space saat jarum overlap zona
+                    -- Ada jarum bergerak → klik SKILL CHECK saat jarum overlap zona
                     local needleX = needle.AbsolutePosition.X
                     local prevX = lastNeedleX[guiKey]
                     lastNeedleX[guiKey] = needleX
@@ -727,8 +740,38 @@ local function autoSkillCheck()
                         local zW = zoneEl.AbsoluteSize.X
                         
                         if needleX >= zX - 10 and needleX <= zX + zW + 10 then
-                            pressSpace()
                             justPressed[guiKey] = true
+                            task.spawn(function()
+                                -- Klik tombol SKILL CHECK (klik kiri mouse, bukan Space)
+                                if skillCheckBtn then
+                                    if firesignal then
+                                        pcall(function() skillCheckBtn:Activate() end)
+                                        pcall(function() firesignal(skillCheckBtn.MouseButton1Click) end)
+                                        pcall(function() firesignal(skillCheckBtn.Activated) end)
+                                    elseif getconnections then
+                                        pcall(function() skillCheckBtn:Activate() end)
+                                        for _, c in ipairs(getconnections(skillCheckBtn.MouseButton1Click)) do pcall(function() c:Fire() end) end
+                                    else
+                                        pcall(function() skillCheckBtn:Activate() end)
+                                        local bx = skillCheckBtn.AbsolutePosition.X + skillCheckBtn.AbsoluteSize.X / 2
+                                        local by = skillCheckBtn.AbsolutePosition.Y + skillCheckBtn.AbsoluteSize.Y / 2
+                                        pcall(function()
+                                            VirtualInputManager:SendMouseButtonEvent(bx, by, 0, true, game, 1)
+                                            task.wait(0.01)
+                                            VirtualInputManager:SendMouseButtonEvent(bx, by, 0, false, game, 1)
+                                        end)
+                                    end
+                                else
+                                    -- Fallback: klik kiri di posisi tengah zona
+                                    local cx = zX + zW / 2
+                                    local cy = zoneEl.AbsolutePosition.Y + zoneEl.AbsoluteSize.Y / 2
+                                    pcall(function()
+                                        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                                        task.wait(0.01)
+                                        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                                    end)
+                                end
+                            end)
                             task.delay(0.3, function() justPressed[guiKey] = false end)
                         end
                     end
@@ -1157,6 +1200,32 @@ local function findKillerRoot()
             if oName:find("nightmare") or oName:find("killer") or obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") then
                 local root = obj:FindFirstChild("HumanoidRootPart")
                 if root then return root end
+            end
+        end
+    end
+    
+    -- 4. Fallback berdasarkan WalkSpeed: killer biasanya lebih cepat dari survivor (>18)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local pHum = p.Character:FindFirstChildOfClass("Humanoid")
+            local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
+            if pHum and pRoot and pHum.WalkSpeed > 18 then
+                return pRoot
+            end
+        end
+    end
+    
+    -- 5. Fallback: cek objek di dalam karakter player lain yang namanya mengandung "nightmare"/"killer"
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
+            if pRoot then
+                for _, obj in ipairs(p.Character:GetDescendants()) do
+                    local n = obj.Name:lower()
+                    if n:find("nightmare") or n:find("killer") or n:find("monster") or n:find("lori") then
+                        return pRoot
+                    end
+                end
             end
         end
     end

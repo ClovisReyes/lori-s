@@ -646,281 +646,137 @@ CreateToggle(FarmCard, "Auto Coin Farm (Teleport)", UDim2.new(0, 10, 0, 35), fal
     end
 end)
 
--- Fitur 1.5: Auto Skill Check Versi 2.0 (Deteksi Adaptif & Multi-Container)
+-- Fitur 1.5: Auto Skill Check Versi 3.0 (Ringan, Deteksi Gerakan Jarum)
 local isAutoSkillCheck = false
-local guiAppearTimes = {}
 local function autoSkillCheck()
     task.spawn(function()
-        -- Helper: Cek Visibilitas GUI Secara Rekursif (Memastikan elemen benar-benar terlihat di layar)
-        local function isGuiVisible(guiObject)
-            if not guiObject then return false end
-            if not guiObject:IsA("GuiObject") then return false end
-            
-            local current = guiObject
-            while current and current:IsA("GuiObject") do
-                if not current.Visible then
-                    return false
-                end
-                current = current.Parent
-            end
-            
-            local parentGui = guiObject:FindFirstAncestorWhichIsA("LayerCollector")
-            if parentGui and not parentGui.Enabled then
-                return false
-            end
-            
-            return true
-        end
-
-        -- Helper: Cari GUI TV di Workspace jika dekat player (Mendukung QTE dalam bentuk SurfaceGui/BillboardGui di TV)
-        local function getNearbyTVGui()
-            local char = LocalPlayer.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            if not root then return nil end
-            
-            local tvs = findTVs()
-            for _, tv in ipairs(tvs) do
-                if tv and tv.Parent then
-                    local dist = (tv.Position - root.Position).Magnitude
-                    if dist < 18 then -- Rentang 18 studs dekat TV
-                        for _, child in ipairs(tv:GetDescendants()) do
-                            if (child:IsA("BillboardGui") or child:IsA("SurfaceGui")) and child.Enabled then
-                                return child
-                            end
-                        end
-                        for _, child in ipairs(tv.Parent:GetDescendants()) do
-                            if (child:IsA("BillboardGui") or child:IsA("SurfaceGui")) and child.Enabled then
-                                return child
-                            end
-                        end
-                    end
-                end
-            end
-            return nil
+        -- Track posisi jarum sebelumnya per-GUI untuk mendeteksi gerakan (bukan keyword)
+        local lastNeedleX = {}
+        local justPressed = {}
+        
+        local function pressSpace()
+            pcall(function()
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                task.wait(0.01)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+            end)
         end
 
         while isAutoSkillCheck do
-            task.wait(0.005)
+            task.wait(0.05) -- 20fps, 10x lebih ringan dari sebelumnya
             
-            local guisToScan = {}
-            
-            -- 1. Scan PlayerGui
             local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-            if playerGui then
-                for _, gui in ipairs(playerGui:GetChildren()) do
-                    if (gui:IsA("ScreenGui") or gui:IsA("BillboardGui") or gui:IsA("SurfaceGui")) and gui.Enabled and gui.Name ~= "LoriNightmareUltimateHub" then
-                        table.insert(guisToScan, gui)
-                    end
-                end
-            end
+            if not playerGui then continue end
             
-            -- 2. Scan CoreGui (Pencegahan kegagalan / executor safety)
-            pcall(function()
-                if CoreGui then
-                    for _, gui in ipairs(CoreGui:GetChildren()) do
-                        if (gui:IsA("ScreenGui") or gui:IsA("BillboardGui") or gui:IsA("SurfaceGui")) and gui.Enabled and gui.Name ~= "LoriNightmareUltimateHub" then
-                            table.insert(guisToScan, gui)
-                        end
-                    end
-                end
-            end)
-            
-            -- 3. Scan Workspace (Jika QTE digambar langsung pada objek TV 3D)
-            local workspaceGui = getNearbyTVGui()
-            if workspaceGui then
-                table.insert(guisToScan, workspaceGui)
-            end
-            
-            -- Jalankan deteksi QTE pada semua GUI yang terkumpul
-            for _, gui in ipairs(guisToScan) do
+            for _, gui in ipairs(playerGui:GetChildren()) do
+                if not gui:IsA("ScreenGui") or not gui.Enabled or gui.Name == "LoriNightmareUltimateHub" then continue end
+                
                 local gName = gui.Name:lower()
-                local isMinigameGui = false
+                local isMinigameGui = gName:find("repair") or gName:find("tv") or gName:find("skill") or gName:find("qte") or gName:find("kaset") or gName:find("tape") or gName:find("cassette") or gName:find("minigame") or gName:find("interact") or gName:find("television") or
+                   gui:FindFirstChild("Circle", true) or gui:FindFirstChild("Ball", true) or
+                   gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true)
                 
-                -- Cek apakah GUI merupakan QTE/Skill Check/Repair Screen
-                if gName:find("repair") or gName:find("tv") or gName:find("skill") or gName:find("qte") or gName:find("kaset") or gName:find("tape") or gName:find("cassette") or gName:find("minigame") or gName:find("play") or gName:find("interaction") or gName:find("interact") or gName:find("television") or
-                   gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Circle", true) or gui:FindFirstChild("Ball", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Pointer", true) then
-                    isMinigameGui = true
+                if not isMinigameGui then continue end
+                
+                local guiKey = tostring(gui):sub(-8) -- pakai suffix unik memory address
+                
+                -- ==============================================================
+                -- BAGIAN A: QTE Lingkaran (Klik Tombol Bulat / Circle Click)
+                -- ==============================================================
+                for _, btn in ipairs(gui:GetDescendants()) do
+                    if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and btn.Visible then
+                        local bName = btn.Name:lower()
+                        if bName:find("circle") or bName:find("ball") or bName:find("click") or bName:find("tap") or bName:find("node") or bName:find("target") or bName:find("ring") then
+                            local sz = btn.AbsoluteSize
+                            if sz.X > 10 and sz.Y > 10 then
+                                task.spawn(function()
+                                    if getconnections then
+                                        pcall(function() btn:Activate() end)
+                                        for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
+                                        for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
+                                    elseif firesignal then
+                                        pcall(function() btn:Activate() end)
+                                        pcall(function() firesignal(btn.MouseButton1Click) end)
+                                    else
+                                        pcall(function() btn:Activate() end)
+                                    end
+                                end)
+                            end
+                        end
+                    end
                 end
                 
-                if isMinigameGui then
-                    -- Nonaktifkan modal/active agar tidak mengunci pergerakan karakter atau kamera
-                    pcall(function()
-                        if gui:IsA("GuiObject") then
-                            gui.Active = false
+                -- ==============================================================
+                -- BAGIAN B: QTE Geser/Kaset (Deteksi Jarum Bergerak via Posisi)
+                -- Pendekatan: temukan elemen paling KURUS (jarum) di dalam bar lebar.
+                -- Jarum harus BERGERAK (posisi X berubah antar frame) sebelum spacebar ditekan.
+                -- Zona target = elemen terlebar PALING KANAN di dalam bar yang sama.
+                -- ==============================================================
+                
+                -- Cari bar horizontal terlebar (container slide bar)
+                local barEl = nil
+                local maxBarW = 200 -- minimal 200px dianggap slide bar
+                for _, child in ipairs(gui:GetDescendants()) do
+                    if child:IsA("Frame") and child.Visible then
+                        local sz = child.AbsoluteSize
+                        if sz.X > maxBarW and sz.X > sz.Y * 3 then -- sangat lebar (bar horizontal)
+                            maxBarW = sz.X
+                            barEl = child
                         end
-                        for _, child in ipairs(gui:GetDescendants()) do
-                            if child:IsA("GuiObject") then
-                                child.Active = false
-                                if child:IsA("TextButton") or child:IsA("ImageButton") then
-                                    child.Modal = false
-                                end
-                            end
-                        end
-                    end)
-
-                    -- Deteksi Pointer (Jarum/Garis Merah) & Zone (Target Kaset/Area Hijau) menggunakan pencarian kata kunci rekursif
-                    local hasPointer = nil
-                    local hasZone = nil
+                    end
+                end
+                
+                if barEl then
+                    -- Cari jarum: elemen PALING KURUS & TINGGI di dalam bar
+                    local needle = nil
+                    local minRatio = 0.8 -- ratio X/Y harus kecil (lebih kurus dari ini)
                     
-                    local pointerKeywords = {"pointer", "needle", "indicator", "redline", "jarum", "penunjuk"}
-                    -- zoneKeywords lebih ketat: hanya nama spesifik zona sukses kaset, bukan nama umum seperti "icon" atau "box"
-                    local zoneKeywords = {"zone", "success", "greenbar", "perfectzone", "kaset", "tape", "cassette"}
+                    -- Cari zona target: elemen terluas PALING KANAN di dalam bar
+                    local zoneEl = nil
+                    local maxZoneX = -math.huge
                     
-                    for _, child in ipairs(gui:GetDescendants()) do
-                        local cName = child.Name:lower()
-                        if not hasPointer then
-                            for _, kw in ipairs(pointerKeywords) do
-                                if cName:find(kw) then
-                                    hasPointer = child
-                                    break
-                                end
+                    for _, child in ipairs(barEl:GetDescendants()) do
+                        if child:IsA("GuiObject") and child.Visible then
+                            local sz = child.AbsoluteSize
+                            if sz.X < 1 or sz.Y < 1 then continue end
+                            
+                            local ratio = sz.X / sz.Y
+                            
+                            -- Jarum: sangat kurus (ratio X/Y kecil) dan cukup tinggi
+                            if ratio < minRatio and sz.Y > 20 then
+                                minRatio = ratio
+                                needle = child
                             end
-                        end
-                        if not hasZone then
-                            for _, kw in ipairs(zoneKeywords) do
-                                if cName:find(kw) then
-                                    hasZone = child
-                                    break
+                            
+                            -- Zona: elemen yang lebih lebar dari tinggi, dan paling ke kanan
+                            if sz.X >= sz.Y and sz.X > 20 then
+                                local cX = child.AbsolutePosition.X
+                                if cX > maxZoneX then
+                                    maxZoneX = cX
+                                    zoneEl = child
                                 end
                             end
                         end
                     end
                     
-                    if hasPointer and hasZone then
-                        -- Cek delay pemunculan agar tidak fail di frame pertama
-                        local guiId = nil
-                        pcall(function() guiId = gui:GetDebugId() end)
-                        guiId = guiId or tostring(gui)
+                    -- Proses hanya jika ditemukan jarum dan zona
+                    if needle and zoneEl and needle ~= zoneEl then
+                        local needleX = needle.AbsolutePosition.X
+                        local prevX = lastNeedleX[guiKey]
+                        lastNeedleX[guiKey] = needleX
                         
-                        if not guiAppearTimes[guiId] then
-                            guiAppearTimes[guiId] = tick()
-                        end
+                        -- HANYA tekan space jika jarum BENAR-BENAR BERGERAK (cegah false positive frame pertama)
+                        local isMoving = prevX and math.abs(needleX - prevX) > 0.5
                         
-                        local elapsed = tick() - guiAppearTimes[guiId]
-                        if elapsed >= 0.3 then -- Delay 0.3 detik agar game menginisialisasi rotasi jarum/sukses
-                            if isGuiVisible(hasPointer) and isGuiVisible(hasZone) then
-                                local pPos = hasPointer.AbsolutePosition
-                                local zPos = hasZone.AbsolutePosition
-                                local zSize = hasZone.AbsoluteSize
-                                
-                                -- 1. Deteksi orientasi bar: Horizontal atau Vertikal
-                                local isHorizontal = true
-                                local parentBar = hasPointer.Parent
-                                if parentBar and parentBar:IsA("GuiObject") then
-                                    if parentBar.AbsoluteSize.Y > parentBar.AbsoluteSize.X then
-                                        isHorizontal = false
-                                    end
-                                end
-                                
-                                -- 2. Deteksi apakah ini QTE Rotasi (Sudut) khusus jika nama GUI eksplisit mengandung rotasi/circle/dial
-                                local isRotationQTE = gName:find("circle") or gName:find("dial") or gName:find("rotat") or gName:find("ring")
-                                
-                                if isRotationQTE then
-                                    -- QTE Rotasi: Bandingkan sudut rotasi (derajat)
-                                    local pRot = hasPointer.AbsoluteRotation % 360
-                                    local zRot = hasZone.AbsoluteRotation % 360
-                                    
-                                    local diff = (pRot - zRot) % 360
-                                    if diff > 180 then diff = diff - 360 end
-                                    
-                                    if diff >= -15 and diff <= 35 then
-                                        task.spawn(function()
-                                            pcall(function()
-                                                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                                                task.wait(0.01)
-                                                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-                                            end)
-                                        end)
-                                        task.wait(0.12)
-                                    end
-                                else
-                                    -- QTE Geser (Sliding Bar): Bandingkan overlap satu arah untuk mencegah kegagalan Y-offset
-                                    if isHorizontal then
-                                        -- Cek overlap horisontal (X-axis) dengan toleransi 3 pixel
-                                        local hOverlap = pPos.X >= (zPos.X - 3) and pPos.X <= (zPos.X + zSize.X + 3)
-                                        if hOverlap then
-                                            task.spawn(function()
-                                                pcall(function()
-                                                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                                                    task.wait(0.01)
-                                                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-                                                end)
-                                            end)
-                                            task.wait(0.15)
-                                        end
-                                    else
-                                        -- Cek overlap vertikal (Y-axis) dengan toleransi 3 pixel
-                                        local vOverlap = pPos.Y >= (zPos.Y - 3) and pPos.Y <= (zPos.Y + zSize.Y + 3)
-                                        if vOverlap then
-                                            task.spawn(function()
-                                                pcall(function()
-                                                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                                                    task.wait(0.01)
-                                                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-                                                end)
-                                            end)
-                                            task.wait(0.15)
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    else
-                        -- Ini adalah QTE Lingkaran (Click). Jalankan deteksi klik mouse secara silent!
-                        for _, btn in ipairs(gui:GetDescendants()) do
-                            if (btn:IsA("ImageButton") or btn:IsA("TextButton") or btn:IsA("ImageLabel") or btn:IsA("Frame")) and isGuiVisible(btn) then
-                                local bName = btn.Name:lower()
-                                local parentName = btn.Parent and btn.Parent.Name:lower() or ""
-                                
-                                -- Deteksi tombol/objek lingkaran QTE
-                                local isClickTarget = bName:find("circle") or bName:find("ball") or bName:find("click") or bName:find("tap") or bName:find("node") or bName:find("target") or bName:find("button") or bName:find("ring") or bName:find("hit") or
-                                                      parentName:find("circle") or parentName:find("ball") or parentName:find("click") or parentName:find("tap") or parentName:find("target") or
-                                                      btn:IsA("ImageButton") or btn:IsA("TextButton")
-                                
-                                if isClickTarget then
-                                    local size = btn.AbsoluteSize
-                                    local pos = btn.AbsolutePosition
-                                    
-                                    if size.X > 5 and size.Y > 5 and pos.X >= 0 and pos.Y >= 0 then
-                                        task.spawn(function()
-                                            -- A. Method 1: Silent klik menggunakan firesignal jika tersedia
-                                            if firesignal then
-                                                pcall(function() btn:Activate() end)
-                                                pcall(function() firesignal(btn.MouseButton1Click) end)
-                                                pcall(function() firesignal(btn.MouseButton1Down) end)
-                                                pcall(function() firesignal(btn.Activated) end)
-                                                pcall(function() firesignal(btn.InputBegan, {UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end)
-                                                return
-                                            end
-                                            
-                                            -- B. Method 2: Silent klik menggunakan getconnections
-                                            if getconnections then
-                                                if btn:IsA("ImageButton") or btn:IsA("TextButton") then
-                                                    pcall(function() btn:Activate() end)
-                                                    for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() conn:Fire() end) end
-                                                    for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() conn:Fire() end) end
-                                                    for _, conn in ipairs(getconnections(btn.Activated)) do pcall(function() conn:Fire() end) end
-                                                end
-                                                for _, conn in ipairs(getconnections(btn.InputBegan)) do
-                                                    pcall(function() conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end)
-                                                end
-                                                return
-                                            end
-                                            
-                                            -- C. Method 3: Fallback klik virtual (hanya jika getconnections/firesignal tidak didukung)
-                                            if btn:IsA("ImageButton") or btn:IsA("TextButton") then
-                                                pcall(function() btn:Activate() end)
-                                            end
-                                            local centerX = pos.X + (size.X / 2)
-                                            local centerY = pos.Y + (size.Y / 2)
-                                            pcall(function()
-                                                VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
-                                                task.wait(0.01)
-                                                VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
-                                            end)
-                                        end)
-                                    end
-                                end
+                        if isMoving and not justPressed[guiKey] then
+                            local zX = zoneEl.AbsolutePosition.X
+                            local zW = zoneEl.AbsoluteSize.X
+                            
+                            -- Cek apakah posisi jarum overlap dengan zona target
+                            if needleX >= zX - 5 and needleX <= zX + zW + 5 then
+                                pressSpace()
+                                justPressed[guiKey] = true
+                                task.delay(0.3, function() justPressed[guiKey] = false end)
                             end
                         end
                     end
@@ -987,11 +843,11 @@ local function applyPlayerESP(player)
             root.ESPHighlight:Destroy()
         end
         
-        -- Semua player ESP pakai warna Biru
+        -- Semua player ESP pakai warna Hijau
         local hl = Instance.new("Highlight")
         hl.Name = "ESPHighlight"
         hl.Adornee = char
-        hl.FillColor = Theme.Blue
+        hl.FillColor = Theme.Green
         hl.FillTransparency = 0.4
         hl.OutlineColor = Theme.TextActive
         hl.OutlineTransparency = 0.1
@@ -1323,15 +1179,34 @@ end
 local isAutoFollowKiller = false
 local function autoFollowKillerLoop()
     while isAutoFollowKiller do
-        task.wait(0.08) -- Perbarui sedikit lebih cepat untuk pergerakan halus
+        task.wait(0.1)
         if isPlayerKnocked() then
             local killerRoot = findKillerRoot()
             local char = LocalPlayer.Character
             local root = char and char:FindFirstChild("HumanoidRootPart")
             
             if root and killerRoot then
-                -- Teleportasikan ke belakang Killer di permukaan tanah (Y rendah agar tidak ngambang)
-                root.CFrame = killerRoot.CFrame * CFrame.new(0, -2.5, 2)
+                local killerPos = killerRoot.Position
+                
+                -- Raycast ke bawah dari posisi killer untuk menemukan permukaan tanah nyata
+                local rayParams = RaycastParams.new()
+                rayParams.FilterType = Enum.RaycastFilterType.Exclude
+                -- Exclude karakter killer & karakter downed sendiri agar tidak terdeteksi
+                local filterList = {}
+                if killerRoot.Parent then table.insert(filterList, killerRoot.Parent) end
+                if char then table.insert(filterList, char) end
+                rayParams.FilterDescendantsInstances = filterList
+                
+                -- Tembak ray dari atas killer ke bawah (50 stud)
+                local rayOrigin = Vector3.new(killerPos.X + 2, killerPos.Y + 5, killerPos.Z)
+                local rayResult = workspace:Raycast(rayOrigin, Vector3.new(0, -50, 0), rayParams)
+                
+                -- Tentukan Y tanah: dari raycast atau fallback ke posisi killer dikurangi setinggi karakter berdiri (~3 stud)
+                local groundY = rayResult and rayResult.Position.Y or (killerPos.Y - 3)
+                
+                -- Tempatkan player 2.5 stud di samping killer, tepat 0.5 stud di atas tanah (posisi downed natural)
+                local targetPos = Vector3.new(killerPos.X + 2.5, groundY + 0.5, killerPos.Z)
+                root.CFrame = CFrame.new(targetPos)
             end
         end
     end

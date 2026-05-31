@@ -732,77 +732,57 @@ local function autoSkillCheck()
                 end
                 
                 -- ==============================================================
-                -- BAGIAN B: QTE Geser/Kaset (Deteksi Jarum Bergerak via Posisi)
-                -- Pendekatan: temukan elemen paling KURUS (jarum) di dalam bar lebar.
-                -- Jarum harus BERGERAK (posisi X berubah antar frame) sebelum spacebar ditekan.
-                -- Zona target = elemen terlebar PALING KANAN di dalam bar yang sama.
+                -- BAGIAN B: QTE Geser/Kaset (Deteksi Jarum Bergerak)
+                -- Cari langsung di semua descendants GUI, tidak perlu temukan "bar" dulu.
+                -- Jarum = elemen paling kurus (X<<Y) yang bergerak.
+                -- Zona = elemen paling kanan yang berbentuk kotak/persegi.
                 -- ==============================================================
+                local needle = nil
+                local minRatio = 0.6 -- jarum harus sangat kurus (X/Y < 0.6)
+                local zoneEl = nil
+                local maxZoneX = -math.huge
                 
-                -- Cari bar horizontal terlebar (container slide bar)
-                local barEl = nil
-                local maxBarW = 200 -- minimal 200px dianggap slide bar
                 for _, child in ipairs(gui:GetDescendants()) do
-                    if child:IsA("Frame") and child.Visible then
-                        local sz = child.AbsoluteSize
-                        if sz.X > maxBarW and sz.X > sz.Y * 3 then -- sangat lebar (bar horizontal)
-                            maxBarW = sz.X
-                            barEl = child
+                    if not child:IsA("GuiObject") or not child.Visible then continue end
+                    local sz = child.AbsoluteSize
+                    if sz.X < 1 or sz.Y < 1 then continue end
+                    
+                    local ratio = sz.X / sz.Y
+                    local pos = child.AbsolutePosition
+                    
+                    -- Jarum: sangat kurus dan cukup tinggi
+                    if ratio < minRatio and sz.X < 25 and sz.Y > 15 and pos.X > 0 and pos.Y > 0 then
+                        if ratio < minRatio then
+                            minRatio = ratio
+                            needle = child
+                        end
+                    end
+                    
+                    -- Zona: berbentuk kotak/persegi atau lebih lebar dari tinggi, minimal 20px, paling kanan
+                    if sz.X >= sz.Y * 0.8 and sz.X > 20 and sz.Y > 15 and pos.X > 0 then
+                        if pos.X > maxZoneX then
+                            maxZoneX = pos.X
+                            zoneEl = child
                         end
                     end
                 end
                 
-                if barEl then
-                    -- Cari jarum: elemen PALING KURUS & TINGGI di dalam bar
-                    local needle = nil
-                    local minRatio = 0.8 -- ratio X/Y harus kecil (lebih kurus dari ini)
+                if needle and zoneEl and needle ~= zoneEl then
+                    local needleX = needle.AbsolutePosition.X
+                    local prevX = lastNeedleX[guiKey]
+                    lastNeedleX[guiKey] = needleX
                     
-                    -- Cari zona target: elemen terluas PALING KANAN di dalam bar
-                    local zoneEl = nil
-                    local maxZoneX = -math.huge
+                    -- HANYA tekan space jika jarum BENAR-BENAR BERGERAK (cegah false positive)
+                    local isMoving = prevX and math.abs(needleX - prevX) > 0.5
                     
-                    for _, child in ipairs(barEl:GetDescendants()) do
-                        if child:IsA("GuiObject") and child.Visible then
-                            local sz = child.AbsoluteSize
-                            if sz.X < 1 or sz.Y < 1 then continue end
-                            
-                            local ratio = sz.X / sz.Y
-                            
-                            -- Jarum: sangat kurus (ratio X/Y kecil) dan cukup tinggi
-                            if ratio < minRatio and sz.Y > 20 then
-                                minRatio = ratio
-                                needle = child
-                            end
-                            
-                            -- Zona: elemen yang lebih lebar dari tinggi, dan paling ke kanan
-                            if sz.X >= sz.Y and sz.X > 20 then
-                                local cX = child.AbsolutePosition.X
-                                if cX > maxZoneX then
-                                    maxZoneX = cX
-                                    zoneEl = child
-                                end
-                            end
-                        end
-                    end
-                    
-                    -- Proses hanya jika ditemukan jarum dan zona
-                    if needle and zoneEl and needle ~= zoneEl then
-                        local needleX = needle.AbsolutePosition.X
-                        local prevX = lastNeedleX[guiKey]
-                        lastNeedleX[guiKey] = needleX
+                    if isMoving and not justPressed[guiKey] then
+                        local zX = zoneEl.AbsolutePosition.X
+                        local zW = zoneEl.AbsoluteSize.X
                         
-                        -- HANYA tekan space jika jarum BENAR-BENAR BERGERAK (cegah false positive frame pertama)
-                        local isMoving = prevX and math.abs(needleX - prevX) > 0.5
-                        
-                        if isMoving and not justPressed[guiKey] then
-                            local zX = zoneEl.AbsolutePosition.X
-                            local zW = zoneEl.AbsoluteSize.X
-                            
-                            -- Cek apakah posisi jarum overlap dengan zona target
-                            if needleX >= zX - 5 and needleX <= zX + zW + 5 then
-                                pressSpace()
-                                justPressed[guiKey] = true
-                                task.delay(0.3, function() justPressed[guiKey] = false end)
-                            end
+                        if needleX >= zX - 8 and needleX <= zX + zW + 8 then
+                            pressSpace()
+                            justPressed[guiKey] = true
+                            task.delay(0.3, function() justPressed[guiKey] = false end)
                         end
                     end
                 end
@@ -1113,9 +1093,28 @@ local function isPlayerKnocked()
         return true
     end
     
-    -- 4. Cek Kecepatan Jalan (Crawling speed biasanya sangat lambat, e.g., di bawah 5)
-    if hum.WalkSpeed > 0 and hum.WalkSpeed <= 5 then
-        return true
+    -- 4. Cek Kecepatan Jalan — WalkSpeed 0 OR sangat lambat (0-5) = kemungkinan downed/crawl
+    -- Catatan: WalkSpeed=0 saat downed, bukan WalkSpeed>0
+    if hum.WalkSpeed >= 0 and hum.WalkSpeed <= 4 then
+        -- Pastikan ini bukan sekadar standing still: harus ada tanda lain (health rendah atau state aneh)
+        if hum.Health < hum.MaxHealth * 0.3 then
+            return true
+        end
+    end
+    
+    -- 4b. Cek GUI "CRAWL" di PlayerGui (spesifik Lori's Nightmare)
+    local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if pGui then
+        for _, obj in ipairs(pGui:GetDescendants()) do
+            if obj.Visible == true then
+                local n = obj.Name:lower()
+                local t = ""
+                pcall(function() t = obj.Text:lower() end)
+                if n:find("crawl") or n:find("knocked") or n:find("downed") or t:find("crawl") or t:find("crawling") then
+                    return true
+                end
+            end
+        end
     end
     
     -- 5. Attributes Check
@@ -1138,14 +1137,12 @@ end
 
 -- Helper: Cari Root Part Milik Killer (Mendukung Player & NPC/Bot Monster di Workspace)
 local function findKillerRoot()
-    -- 1. Cari Killer sebagai Player (gunakan checkIfKiller yang sudah terbukti bekerja)
+    -- 1. Cari Killer sebagai Player (gunakan checkIfKiller)
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and checkIfKiller(p) then
             local char = p.Character
             local root = char and char:FindFirstChild("HumanoidRootPart")
-            if root then
-                return root
-            end
+            if root then return root end
         end
     end
     
@@ -1171,25 +1168,58 @@ local function findKillerRoot()
         end
     end
     
+    -- 4. FALLBACK TERAKHIR: Saat downed, killer = player paling DEKAT dengan kita
+    -- (Killer biasanya ada di dekat player yang baru dijatuhkan)
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if myRoot then
+        local closestDist = 40 -- maksimal 40 stud
+        local closestRoot = nil
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
+                if pRoot then
+                    local dist = (pRoot.Position - myRoot.Position).Magnitude
+                    if dist < closestDist then
+                        closestDist = dist
+                        closestRoot = pRoot
+                    end
+                end
+            end
+        end
+        if closestRoot then return closestRoot end
+    end
+    
     return nil
 end
 
 -- Loop Auto Follow Killer saat Knocked
 local isAutoFollowKiller = false
+local autoFollowConn = nil
 local function autoFollowKillerLoop()
-    while isAutoFollowKiller do
-        task.wait(0.08)
-        if isPlayerKnocked() then
-            local killerRoot = findKillerRoot()
-            local char = LocalPlayer.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            
-            if root and killerRoot then
-                -- Versi yang terbukti WORK: 3 stud di atas, 2 stud di belakang killer
-                root.CFrame = killerRoot.CFrame * CFrame.new(0, 3, 2)
-            end
-        end
+    -- Hapus koneksi lama jika ada
+    if autoFollowConn then
+        autoFollowConn:Disconnect()
+        autoFollowConn = nil
     end
+    
+    -- Gunakan Heartbeat agar update setiap frame (sangat smooth & tidak bisa dilewati)
+    autoFollowConn = RunService.Heartbeat:Connect(function()
+        if not isAutoFollowKiller then
+            autoFollowConn:Disconnect()
+            autoFollowConn = nil
+            return
+        end
+        
+        local killerRoot = findKillerRoot()
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if root and killerRoot then
+            -- Nempel tepat di belakang killer, 2 stud di atas (mengikuti kemana pun killer pergi)
+            root.CFrame = killerRoot.CFrame * CFrame.new(0, 2, 1)
+        end
+    end)
 end
 
 -- Bypass & Movement Physics Card (No-clip & Inf Jump)

@@ -672,53 +672,75 @@ local function autoSkillCheck()
                 if not gui:IsA("ScreenGui") or not gui.Enabled or gui.Name == "LoriNightmareUltimateHub" then continue end
                 
                 local gName = gui.Name:lower()
+                
+                -- Cek apakah GUI mengandung tombol/teks "SKILL CHECK" (untuk kaset)
+                local function guiHasSkillCheck(g)
+                    for _, d in ipairs(g:GetDescendants()) do
+                        if d.Visible and (d:IsA("TextButton") or d:IsA("TextLabel") or d:IsA("ImageButton")) then
+                            local t = ""
+                            pcall(function() t = d.Text:lower() end)
+                            if t:find("skill") or t:find("check") then return true end
+                        end
+                    end
+                    return false
+                end
+                
                 local isMinigameGui = gName:find("repair") or gName:find("tv") or gName:find("skill") or gName:find("qte") or gName:find("kaset") or gName:find("tape") or gName:find("cassette") or gName:find("minigame") or gName:find("interact") or gName:find("television") or
                    gui:FindFirstChild("Circle", true) or gui:FindFirstChild("Ball", true) or
-                   gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true)
+                   gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or
+                   guiHasSkillCheck(gui)
                 
                 if not isMinigameGui then continue end
                 
                 local guiKey = tostring(gui):sub(-8) -- pakai suffix unik memory address
                 
                 -- ==============================================================
-                -- BAGIAN B: Deteksi Jarum DULU (sebelum klik tombol)
-                -- Jarum = elemen paling kurus (X<<Y, width<25px) yang bergerak.
-                -- Zona = elemen kotak di BAGIAN ATAS layar (bukan di bawah).
-                -- Jika jarum ditemukan → sliding QTE → klik tombol SKILL CHECK.
+                -- BAGIAN B: QTE Kaset - Deteksi Jarum BERDASARKAN GERAKAN
+                -- Jarum = elemen yang paling banyak bergerak (posisi X berubah).
+                -- Ini lebih akurat dari deteksi bentuk (shape-based).
                 -- ==============================================================
                 local screenH = workspace.CurrentCamera.ViewportSize.Y
+                
+                -- Ambil state sebelumnya (tabel posisi elemen)
+                local prevState = lastNeedleX[guiKey]
+                if type(prevState) ~= "table" then prevState = {} end
+                local currentState = {}
+                
                 local needle = nil
-                local minRatio = 0.5
+                local maxMovement = 0.5 -- minimum gerakan untuk dianggap bergerak
                 local zoneEl = nil
                 local maxZoneX = -math.huge
-                local skillCheckBtn = nil -- tombol SKILL CHECK yang harus diklik
+                local skillCheckBtn = nil
                 
                 for _, child in ipairs(gui:GetDescendants()) do
                     if not child:IsA("GuiObject") or not child.Visible then continue end
                     local sz = child.AbsoluteSize
                     if sz.X < 1 or sz.Y < 1 then continue end
-                    local ratio = sz.X / sz.Y
                     local cpos = child.AbsolutePosition
+                    local elKey = tostring(child)
                     
-                    -- Cari tombol SKILL CHECK (klik ini bukan tekan Space)
+                    currentState[elKey] = cpos.X
+                    
+                    -- Cari tombol SKILL CHECK
                     if child:IsA("TextButton") or child:IsA("ImageButton") then
-                        local childName = child.Name:lower()
-                        local childText = ""
-                        pcall(function() childText = child.Text:lower() end)
-                        if childName:find("skill") or childName:find("check") or childName:find("qte") or
-                           childText:find("skill") or childText:find("check") then
+                        local t = ""
+                        pcall(function() t = child.Text:lower() end)
+                        if t:find("skill") or t:find("check") or child.Name:lower():find("skill") then
                             skillCheckBtn = child
                         end
                     end
                     
-                    -- Jarum: sangat kurus (X << Y), lebar < 25px, tinggi > 15px
-                    if ratio < minRatio and sz.X < 25 and sz.Y > 15 and cpos.X > 0 and cpos.Y > 0 then
-                        minRatio = ratio
-                        needle = child
+                    -- Deteksi elemen yang paling banyak bergerak (= jarum)
+                    if prevState[elKey] ~= nil then
+                        local dx = math.abs(cpos.X - prevState[elKey])
+                        if dx > maxMovement then
+                            maxMovement = dx
+                            needle = child
+                        end
                     end
                     
-                    -- Zona: kotak/persegi di BAGIAN ATAS layar saja (cegah SKILL CHECK button ikut terpilih)
-                    if sz.X >= sz.Y * 0.7 and sz.X > 20 and sz.Y > 15 and cpos.X > 0 and cpos.Y < screenH * 0.6 then
+                    -- Zone: elemen kotak di BAGIAN ATAS layar, paling kanan
+                    if sz.X >= sz.Y * 0.7 and sz.X > 20 and sz.Y > 15 and cpos.Y < screenH * 0.6 and cpos.X > 0 then
                         if cpos.X > maxZoneX then
                             maxZoneX = cpos.X
                             zoneEl = child
@@ -726,23 +748,21 @@ local function autoSkillCheck()
                     end
                 end
                 
+                -- Update state untuk frame berikutnya
+                lastNeedleX[guiKey] = currentState
+                
                 if needle and zoneEl and needle ~= zoneEl then
                     -- === SLIDING BAR QTE (Cassette/Kaset) ===
-                    -- Ada jarum bergerak → klik SKILL CHECK saat jarum overlap zona
+                    -- Jarum bergerak → klik SKILL CHECK saat jarum overlap zona
                     local needleX = needle.AbsolutePosition.X
-                    local prevX = lastNeedleX[guiKey]
-                    lastNeedleX[guiKey] = needleX
                     
-                    local isMoving = prevX and math.abs(needleX - prevX) > 0.3
-                    
-                    if isMoving and not justPressed[guiKey] then
+                    if not justPressed[guiKey] then
                         local zX = zoneEl.AbsolutePosition.X
                         local zW = zoneEl.AbsoluteSize.X
                         
                         if needleX >= zX - 10 and needleX <= zX + zW + 10 then
                             justPressed[guiKey] = true
                             task.spawn(function()
-                                -- Klik tombol SKILL CHECK (klik kiri mouse, bukan Space)
                                 if skillCheckBtn then
                                     if firesignal then
                                         pcall(function() skillCheckBtn:Activate() end)
@@ -1204,38 +1224,14 @@ local function findKillerRoot()
         end
     end
     
-    -- 4. Fallback berdasarkan WalkSpeed: killer biasanya lebih cepat dari survivor (>18)
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local pHum = p.Character:FindFirstChildOfClass("Humanoid")
-            local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
-            if pHum and pRoot and pHum.WalkSpeed > 18 then
-                return pRoot
-            end
-        end
-    end
-    
-    -- 5. Fallback: cek objek di dalam karakter player lain yang namanya mengandung "nightmare"/"killer"
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
-            if pRoot then
-                for _, obj in ipairs(p.Character:GetDescendants()) do
-                    local n = obj.Name:lower()
-                    if n:find("nightmare") or n:find("killer") or n:find("monster") or n:find("lori") then
-                        return pRoot
-                    end
-                end
-            end
-        end
-    end
-    
     return nil
 end
 
 -- Loop Auto Follow Killer saat Knocked
 local isAutoFollowKiller = false
 local autoFollowConn = nil
+local slipAwayPaused = false -- Pause sementara saat user tekan SLIP AWAY
+
 local function autoFollowKillerLoop()
     -- Hapus koneksi lama jika ada
     if autoFollowConn then
@@ -1243,12 +1239,50 @@ local function autoFollowKillerLoop()
         autoFollowConn = nil
     end
     
+    -- Monitor tombol SLIP AWAY di PlayerGui secara berkala
+    task.spawn(function()
+        local hookedButtons = {} -- Track tombol yang sudah di-hook
+        while isAutoFollowKiller do
+            task.wait(0.5)
+            local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+            if not pGui then continue end
+            for _, obj in ipairs(pGui:GetDescendants()) do
+                if (obj:IsA("TextButton") or obj:IsA("ImageButton")) and obj.Visible and not hookedButtons[obj] then
+                    local n = obj.Name:lower()
+                    local t = ""
+                    pcall(function() t = obj.Text:lower() end)
+                    if n:find("slip") or t:find("slip") or n:find("away") or t:find("away") then
+                        hookedButtons[obj] = true
+                        obj.MouseButton1Click:Connect(function()
+                            slipAwayPaused = true
+                            -- Auto resume setelah 10 detik jika tidak mati lagi
+                            task.delay(10, function()
+                                slipAwayPaused = false
+                            end)
+                        end)
+                    end
+                end
+            end
+        end
+    end)
+    
     -- Gunakan Heartbeat agar update setiap frame (sangat smooth & tidak bisa dilewati)
     autoFollowConn = RunService.Heartbeat:Connect(function()
         if not isAutoFollowKiller then
             autoFollowConn:Disconnect()
             autoFollowConn = nil
             return
+        end
+        
+        -- Jika slip away aktif, resume otomatis saat mati/downed lagi
+        if slipAwayPaused then
+            -- Re-engage jika player sudah mati lagi (health <= 1)
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health <= 1 then
+                slipAwayPaused = false -- Mati lagi → nempel ke killer lagi
+            end
+            return -- Jangan follow selama slip away
         end
         
         local killerRoot = findKillerRoot()

@@ -14,7 +14,7 @@
 -- 0. CONFIG LOGO KUSTOM (LOCAL FILE / GITHUB RAW / ROBLOX ASSET)
 -- ==========================================
 -- OPSI 1: Jika menggunakan FILE LOKAL di komputer Anda (paling cepat, offline & aman)
-local LOCAL_FILE_NAME = "" -- Contoh: "my_logo.png"
+local LOCAL_FILE_NAME = "logo.png" -- Contoh: "my_logo.png"
 
 -- OPSI 2: Jika meng-host gambar langsung di GITHUB Anda sendiri (Sangat Direkomendasikan!)
 local GITHUB_LOGO_URL = "https://raw.githubusercontent.com/ClovisReyes/lori-s/main/Logo.png"

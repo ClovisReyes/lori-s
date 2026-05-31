@@ -23,11 +23,10 @@ local GITHUB_LOGO_URL = "https://raw.githubusercontent.com/ClovisReyes/lori-s/ma
 local MINIMIZE_LOGO_ID = "rbxassetid://18055673030"
 
 -- ==========================================
--- 0.5. CONFIG FONT KUSTOM LOKAL (.TTF)
+-- 0.5. CONFIG FONT PREMIUM ROBLOX (CLOUDFONT)
 -- ==========================================
--- Taruh file font Anda (contoh: "zh-cn.ttf") di dalam folder 'workspace' milik Executor Anda.
--- Tuliskan nama file font-nya di bawah ini:
-local LOCAL_FONT_NAME = "zh-cn.ttf" -- Kosongkan "" jika ingin menggunakan font bawaan (Gotham)
+-- Menggunakan Montserrat, font geometric sans-serif modern terpopuler di Roblox
+local FONT_FAMILY_ID = "rbxasset://fonts/families/Montserrat.json"
 
 -- Services
 local Players = game:GetService("Players")
@@ -79,32 +78,17 @@ local function tween(object, info, properties)
 end
 
 -- ==========================================
--- LOGIKA PEMUATAN FONT TTF KUSTOM DINAMIS
+-- ==========================================
+-- LOGIKA PEMUATAN FONT PREMIUM ROBLOX
 -- ==========================================
 local customFont = nil
 local customFontBold = nil
-if LOCAL_FONT_NAME ~= "" then
-    if LOCAL_FONT_NAME:sub(1, 11) == "rbxasset://" then
-        pcall(function()
-            customFont = Font.new(LOCAL_FONT_NAME)
-        end)
-        pcall(function()
-            customFontBold = Font.new(LOCAL_FONT_NAME, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-        end)
-    elseif getcustomasset then
-        local successAsset, assetId = pcall(function()
-            return getcustomasset(LOCAL_FONT_NAME)
-        end)
-        if successAsset and assetId and assetId ~= "" then
-            pcall(function()
-                customFont = Font.new(assetId)
-            end)
-            pcall(function()
-                customFontBold = Font.new(assetId, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-            end)
-        end
-    end
-end
+pcall(function()
+    customFont = Font.new(FONT_FAMILY_ID)
+end)
+pcall(function()
+    customFontBold = Font.new(FONT_FAMILY_ID, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+end)
 
 -- Helper untuk Menerapkan Font ke UI Element
 local function applyFont(element, isBold)
@@ -737,76 +721,78 @@ local function autoSkillCheck()
                 end
                 
                 if isMinigameGui then
-                    -- A. SENSOR PETA LINGKARAN (Circle Skillcheck / Click Ball)
-                    for _, btn in ipairs(gui:GetDescendants()) do
-                        if (btn:IsA("ImageButton") or btn:IsA("TextButton") or btn:IsA("ImageLabel") or btn:IsA("Frame")) and isGuiVisible(btn) then
-                            local bName = btn.Name:lower()
-                            local parentName = btn.Parent and btn.Parent.Name:lower() or ""
+                    local hasPointer = gui:FindFirstChild("Pointer", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Indicator", true)
+                    local hasZone = gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("GreenBar", true) or gui:FindFirstChild("PerfectZone", true)
+                    
+                    if hasPointer and hasZone then
+                        -- Ini adalah QTE Kaset / Bar (Spacebar). HANYA jalankan deteksi spasi, JANGAN klik mouse!
+                        if isGuiVisible(hasPointer) and isGuiVisible(hasZone) then
+                            local pPos = hasPointer.AbsolutePosition
+                            local zPos = hasZone.AbsolutePosition
+                            local zSize = hasZone.AbsoluteSize
                             
-                            -- Deteksi tombol/objek lingkaran QTE
-                            local isClickTarget = bName:find("circle") or bName:find("ball") or bName:find("click") or bName:find("tap") or bName:find("node") or bName:find("target") or bName:find("button") or bName:find("ring") or bName:find("hit") or
-                                                  parentName:find("circle") or parentName:find("ball") or parentName:find("click") or parentName:find("tap") or parentName:find("target") or
-                                                  btn:IsA("ImageButton") or btn:IsA("TextButton")
+                            local hOverlap = pPos.X >= (zPos.X - 5) and pPos.X <= (zPos.X + zSize.X + 5)
+                            local vOverlap = pPos.Y >= (zPos.Y - 5) and pPos.Y <= (zPos.Y + zSize.Y + 5)
                             
-                            if isClickTarget then
-                                local size = btn.AbsoluteSize
-                                local pos = btn.AbsolutePosition
-                                
-                                if size.X > 5 and size.Y > 5 and pos.X >= 0 and pos.Y >= 0 then
-                                    -- Jalankan klik secara asinkron agar tidak memblokir loop scanning utama
-                                    task.spawn(function()
-                                        -- 1. standard button activation
-                                        if btn:IsA("ImageButton") or btn:IsA("TextButton") then
-                                            pcall(function() btn:Activate() end)
-                                        end
-                                        
-                                        -- 2. fire connections
-                                        if getconnections then
-                                            if btn:IsA("ImageButton") or btn:IsA("TextButton") then
-                                                for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() conn:Fire() end) end
-                                                for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() conn:Fire() end) end
-                                                for _, conn in ipairs(getconnections(btn.Activated)) do pcall(function() conn:Fire() end) end
-                                            end
-                                            for _, conn in ipairs(getconnections(btn.InputBegan)) do
-                                                pcall(function() conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end)
-                                            end
-                                        end
-                                        
-                                        -- 3. virtual mouse click (Direct bypass)
-                                        local centerX = pos.X + (size.X / 2)
-                                        local centerY = pos.Y + (size.Y / 2)
-                                        pcall(function()
-                                            VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
-                                            task.wait(0.01)
-                                            VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
-                                        end)
+                            if hOverlap or vOverlap then
+                                task.spawn(function()
+                                    pcall(function()
+                                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                                        task.wait(0.01)
+                                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
                                     end)
-                                end
+                                end)
+                                task.wait(0.12)
                             end
                         end
-                    end
-                    
-                    -- B. SENSOR KASET TAPE DENGAN BAR ALIGNMENT (Spacebar QTE)
-                    local pointer = gui:FindFirstChild("Pointer", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Bar", true) or gui:FindFirstChild("Pin", true) or gui:FindFirstChild("Indicator", true)
-                    local zone = gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("GreenBar", true) or gui:FindFirstChild("PerfectZone", true)
-                    
-                    if pointer and zone and isGuiVisible(pointer) and isGuiVisible(zone) then
-                        local pPos = pointer.AbsolutePosition
-                        local zPos = zone.AbsolutePosition
-                        local zSize = zone.AbsoluteSize
-                        
-                        local hOverlap = pPos.X >= (zPos.X - 5) and pPos.X <= (zPos.X + zSize.X + 5)
-                        local vOverlap = pPos.Y >= (zPos.Y - 5) and pPos.Y <= (zPos.Y + zSize.Y + 5)
-                        
-                        if hOverlap or vOverlap then
-                            task.spawn(function()
-                                pcall(function()
-                                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                                    task.wait(0.01)
-                                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-                                end)
-                            end)
-                            task.wait(0.12) -- Jeda kecil agar tidak spam input berganda
+                    else
+                        -- Ini adalah QTE Lingkaran (Click). Jalankan deteksi klik mouse!
+                        for _, btn in ipairs(gui:GetDescendants()) do
+                            if (btn:IsA("ImageButton") or btn:IsA("TextButton") or btn:IsA("ImageLabel") or btn:IsA("Frame")) and isGuiVisible(btn) then
+                                local bName = btn.Name:lower()
+                                local parentName = btn.Parent and btn.Parent.Name:lower() or ""
+                                
+                                -- Deteksi tombol/objek lingkaran QTE
+                                local isClickTarget = bName:find("circle") or bName:find("ball") or bName:find("click") or bName:find("tap") or bName:find("node") or bName:find("target") or bName:find("button") or bName:find("ring") or bName:find("hit") or
+                                                      parentName:find("circle") or parentName:find("ball") or parentName:find("click") or parentName:find("tap") or parentName:find("target") or
+                                                      btn:IsA("ImageButton") or btn:IsA("TextButton")
+                                
+                                if isClickTarget then
+                                    local size = btn.AbsoluteSize
+                                    local pos = btn.AbsolutePosition
+                                    
+                                    if size.X > 5 and size.Y > 5 and pos.X >= 0 and pos.Y >= 0 then
+                                        -- Jalankan klik secara asinkron agar tidak memblokir loop scanning utama
+                                        task.spawn(function()
+                                            -- 1. standard button activation
+                                            if btn:IsA("ImageButton") or btn:IsA("TextButton") then
+                                                pcall(function() btn:Activate() end)
+                                            end
+                                            
+                                            -- 2. fire connections
+                                            if getconnections then
+                                                if btn:IsA("ImageButton") or btn:IsA("TextButton") then
+                                                    for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() conn:Fire() end) end
+                                                    for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() conn:Fire() end) end
+                                                    for _, conn in ipairs(getconnections(btn.Activated)) do pcall(function() conn:Fire() end) end
+                                                end
+                                                for _, conn in ipairs(getconnections(btn.InputBegan)) do
+                                                    pcall(function() conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end)
+                                                end
+                                            end
+                                            
+                                            -- 3. virtual mouse click (Direct bypass)
+                                            local centerX = pos.X + (size.X / 2)
+                                            local centerY = pos.Y + (size.Y / 2)
+                                            pcall(function()
+                                                VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
+                                                task.wait(0.01)
+                                                VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
+                                            end)
+                                        end)
+                                    end
+                                end
+                            end
                         end
                     end
                 end
@@ -852,14 +838,12 @@ end)
 -- ==========================================
 -- IMPLEMENTASI TAB: VISUALS (ESP CONTROLS)
 -- ==========================================
-local EspCard = CreateCard(VisualsTab, "Extra Sensory Perception (ESP)", 165)
+local EspCard = CreateCard(VisualsTab, "Extra Sensory Perception (ESP)", 120)
 
 local espPlayersActive = false
-local espCoinsActive = false
 local espTvsActive = false
 
 local playerEspConns = {}
-local coinEspBoxes = {}
 local tvEspBoxes = {}
 
 -- ESP Player Logic (Highlight modern dengan warna Killer/Survivor)
@@ -945,21 +929,7 @@ local function createObjectESP(object, color, name, listTable)
     table.insert(listTable, bgui)
 end
 
-local function toggleCoinESP(state)
-    espCoinsActive = state
-    if espCoinsActive then
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") and (obj.Name:lower():find("coin") or obj.Name:lower():find("token") or obj.Name:lower():find("gold")) then
-                createObjectESP(obj, Theme.Yellow, "🪙 Coin", coinEspBoxes)
-            end
-        end
-    else
-        for _, bgui in ipairs(coinEspBoxes) do
-            if bgui and bgui.Parent then bgui:Destroy() end
-        end
-        coinEspBoxes = {}
-    end
-end
+-- (Coin ESP Has Been Removed)
 
 local tvEspThread = nil
 local function toggleTvESP(state)
@@ -1019,8 +989,7 @@ local function toggleTvESP(state)
 end
 
 CreateToggle(EspCard, "Show Active Players (ESP)", UDim2.new(0, 10, 0, 35), false, togglePlayerESP)
-CreateToggle(EspCard, "Show Coins (ESP)", UDim2.new(0, 10, 0, 75), false, toggleCoinESP)
-CreateToggle(EspCard, "Show TVs (ESP)", UDim2.new(0, 10, 0, 115), false, toggleTvESP)
+CreateToggle(EspCard, "Show TVs (ESP)", UDim2.new(0, 10, 0, 75), false, toggleTvESP)
 
 -- ==========================================
 -- IMPLEMENTASI TAB: PLAYER (SPEED & PHYSICALS)
@@ -1101,8 +1070,81 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
+-- Helper: Cek Apakah Player Sedang Knocked (Downed)
+local function isPlayerKnocked()
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+    
+    -- 1. Check PlatformStand (Metode utama game horor tipe ragdoll di Roblox)
+    if hum.PlatformStand == true then
+        return true
+    end
+    
+    -- 2. Check state (State Physics/PlatformStanding artinya karakter dalam kondisi ragdoll/lumpuh)
+    local state = hum:GetState()
+    if state == Enum.HumanoidStateType.Physics or state == Enum.HumanoidStateType.PlatformStanding then
+        return true
+    end
+    
+    -- 3. Check Attributes bawaan karakter
+    if char:GetAttribute("Knocked") == true or char:GetAttribute("Downed") == true or char:GetAttribute("IsKnocked") == true or char:GetAttribute("Ragdoll") == true or char:GetAttribute("Lying") == true then
+        return true
+    end
+    
+    local stateAttr = char:GetAttribute("State") or char:GetAttribute("Status") or char:GetAttribute("PlayerState")
+    if stateAttr then
+        local s = tostring(stateAttr):lower()
+        if s:find("down") or s:find("knock") or s:find("ragdoll") or s:find("crawling") or s:find("lying") then
+            return true
+        end
+    end
+    
+    -- 4. Check folder/tag penanda downed di dalam Model Karakter
+    if char:FindFirstChild("Downed") or char:FindFirstChild("Knocked") or char:FindFirstChild("Ragdoll") or char:FindFirstChild("IsKnocked") then
+        return true
+    end
+    
+    -- 5. Fallback check health threshold (jika HP di-set di bawah 15 atau bernilai sangat kecil pasca dipukul)
+    if hum.Health > 0 and hum.Health <= 15 then
+        return true
+    end
+    
+    return false
+end
+
+-- Helper: Cari Player Killer
+local function findKillerPlayer()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and checkIfKiller(p) then
+            return p
+        end
+    end
+    return nil
+end
+
+-- Loop Auto Follow Killer saat Knocked
+local isAutoFollowKiller = false
+local function autoFollowKillerLoop()
+    while isAutoFollowKiller do
+        task.wait(0.1)
+        if isPlayerKnocked() then
+            local killer = findKillerPlayer()
+            local killerChar = killer and killer.Character
+            local killerRoot = killerChar and killerChar:FindFirstChild("HumanoidRootPart")
+            
+            local char = LocalPlayer.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            
+            if root and killerRoot then
+                root.CFrame = killerRoot.CFrame + Vector3.new(0, 3, 0)
+            end
+        end
+    end
+end
+
 -- Bypass & Movement Physics Card (No-clip & Inf Jump)
-local BypassCard = CreateCard(PlayerTab, "Bypass Mechanics", 100)
+local BypassCard = CreateCard(PlayerTab, "Bypass Mechanics", 135)
 
 -- Noclip Toggle
 local noclipConnection = nil
@@ -1150,6 +1192,12 @@ end
 
 CreateToggle(BypassCard, "Noclip (Walk Through Walls)", UDim2.new(0, 10, 0, 30), false, toggleNoclip)
 CreateToggle(BypassCard, "Infinite Jump in Air", UDim2.new(0, 10, 0, 65), false, toggleInfJump)
+CreateToggle(BypassCard, "Auto Follow Killer when Knocked", UDim2.new(0, 10, 0, 100), false, function(state)
+    isAutoFollowKiller = state
+    if isAutoFollowKiller then
+        task.spawn(autoFollowKillerLoop)
+    end
+end)
 
 -- ==========================================
 -- 7. SISTEM MINIMIZE LOGO (LOGO KUSTOM USER)
@@ -1298,10 +1346,10 @@ end)
 CloseBtn.MouseButton1Click:Connect(function()
     isFarmingCoins = false
     isAutoSkillCheck = false
+    isAutoFollowKiller = false
     toggleNoclip(false)
     toggleInfJump(false)
     togglePlayerESP(false)
-    toggleCoinESP(false)
     toggleTvESP(false)
     
     tween(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {

@@ -695,22 +695,29 @@ local function autoSkillCheck()
                 local guiKey = tostring(gui):sub(-8) -- pakai suffix unik memory address
                 
                 -- ==============================================================
-                -- BAGIAN B: QTE Kaset - Deteksi Jarum BERDASARKAN GERAKAN
-                -- Jarum = elemen yang paling banyak bergerak (posisi X berubah).
-                -- Ini lebih akurat dari deteksi bentuk (shape-based).
+                -- DETEKSI JARUM (movement-based) untuk QTE Kaset
                 -- ==============================================================
                 local screenH = workspace.CurrentCamera.ViewportSize.Y
-                
-                -- Ambil state sebelumnya (tabel posisi elemen)
                 local prevState = lastNeedleX[guiKey]
                 if type(prevState) ~= "table" then prevState = {} end
                 local currentState = {}
                 
                 local needle = nil
-                local maxMovement = 0.5 -- minimum gerakan untuk dianggap bergerak
+                local maxMovement = 0.5
                 local zoneEl = nil
                 local maxZoneX = -math.huge
                 local skillCheckBtn = nil
+                
+                local function isGuiVisible(obj)
+                    if not obj or not obj:IsA("GuiObject") then return false end
+                    local cur = obj
+                    while cur and cur:IsA("GuiObject") do
+                        if not cur.Visible then return false end
+                        cur = cur.Parent
+                    end
+                    local layer = obj:FindFirstAncestorWhichIsA("LayerCollector")
+                    return not (layer and not layer.Enabled)
+                end
                 
                 for _, child in ipairs(gui:GetDescendants()) do
                     if not child:IsA("GuiObject") or not child.Visible then continue end
@@ -718,10 +725,9 @@ local function autoSkillCheck()
                     if sz.X < 1 or sz.Y < 1 then continue end
                     local cpos = child.AbsolutePosition
                     local elKey = tostring(child)
-                    
                     currentState[elKey] = cpos.X
                     
-                    -- Cari tombol SKILL CHECK
+                    -- Cari tombol SKILL CHECK (untuk kaset)
                     if child:IsA("TextButton") or child:IsA("ImageButton") then
                         local t = ""
                         pcall(function() t = child.Text:lower() end)
@@ -730,7 +736,7 @@ local function autoSkillCheck()
                         end
                     end
                     
-                    -- Deteksi elemen yang paling banyak bergerak (= jarum)
+                    -- Deteksi elemen yang paling banyak bergerak (= jarum kaset)
                     if prevState[elKey] ~= nil then
                         local dx = math.abs(cpos.X - prevState[elKey])
                         if dx > maxMovement then
@@ -739,7 +745,7 @@ local function autoSkillCheck()
                         end
                     end
                     
-                    -- Zone: elemen kotak di BAGIAN ATAS layar, paling kanan
+                    -- Zone: elemen kotak di bagian atas layar, paling kanan
                     if sz.X >= sz.Y * 0.7 and sz.X > 20 and sz.Y > 15 and cpos.Y < screenH * 0.6 and cpos.X > 0 then
                         if cpos.X > maxZoneX then
                             maxZoneX = cpos.X
@@ -748,98 +754,81 @@ local function autoSkillCheck()
                     end
                 end
                 
-                -- Update state untuk frame berikutnya
                 lastNeedleX[guiKey] = currentState
                 
-                if needle and zoneEl and needle ~= zoneEl then
-                    -- === SLIDING BAR QTE (Cassette/Kaset) ===
-                    -- Jarum bergerak → klik SKILL CHECK saat jarum overlap zona
-                    local needleX = needle.AbsolutePosition.X
-                    
-                    if not justPressed[guiKey] then
-                        local zX = zoneEl.AbsolutePosition.X
-                        local zW = zoneEl.AbsoluteSize.X
-                        
-                        if needleX >= zX - 10 and needleX <= zX + zW + 10 then
-                            justPressed[guiKey] = true
+                -- === CIRCLE QTE: Klik semua tombol (kecuali SKILL CHECK) ===
+                -- Selalu jalan, tidak bergantung deteksi jarum
+                for _, btn in ipairs(gui:GetDescendants()) do
+                    if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and isGuiVisible(btn) and btn ~= skillCheckBtn then
+                        local sz = btn.AbsoluteSize
+                        local bpos = btn.AbsolutePosition
+                        if sz.X > 5 and sz.Y > 5 and sz.X < 500 and sz.Y < 500 and bpos.X >= 0 and bpos.Y >= 0 then
                             task.spawn(function()
-                                if skillCheckBtn then
-                                    if firesignal then
-                                        pcall(function() skillCheckBtn:Activate() end)
-                                        pcall(function() firesignal(skillCheckBtn.MouseButton1Click) end)
-                                        pcall(function() firesignal(skillCheckBtn.Activated) end)
-                                    elseif getconnections then
-                                        pcall(function() skillCheckBtn:Activate() end)
-                                        for _, c in ipairs(getconnections(skillCheckBtn.MouseButton1Click)) do pcall(function() c:Fire() end) end
-                                    else
-                                        pcall(function() skillCheckBtn:Activate() end)
-                                        local bx = skillCheckBtn.AbsolutePosition.X + skillCheckBtn.AbsoluteSize.X / 2
-                                        local by = skillCheckBtn.AbsolutePosition.Y + skillCheckBtn.AbsoluteSize.Y / 2
-                                        pcall(function()
-                                            VirtualInputManager:SendMouseButtonEvent(bx, by, 0, true, game, 1)
-                                            task.wait(0.01)
-                                            VirtualInputManager:SendMouseButtonEvent(bx, by, 0, false, game, 1)
-                                        end)
-                                    end
+                                if firesignal then
+                                    pcall(function() btn:Activate() end)
+                                    pcall(function() firesignal(btn.MouseButton1Click) end)
+                                    pcall(function() firesignal(btn.MouseButton1Down) end)
+                                    pcall(function() firesignal(btn.Activated) end)
+                                    return
+                                end
+                                if getconnections then
+                                    pcall(function() btn:Activate() end)
+                                    for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
+                                    for _, c in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() c:Fire() end) end
+                                    for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
+                                    return
+                                end
+                                pcall(function() btn:Activate() end)
+                                local cx = bpos.X + sz.X / 2
+                                local cy = bpos.Y + sz.Y / 2
+                                pcall(function()
+                                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                                    task.wait(0.01)
+                                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                                end)
+                            end)
+                        end
+                    end
+                end
+                
+                -- === CASSETTE QTE: Klik SKILL CHECK saat jarum overlap zona ===
+                if needle and zoneEl and needle ~= zoneEl and not justPressed[guiKey] then
+                    local needleX = needle.AbsolutePosition.X
+                    local zX = zoneEl.AbsolutePosition.X
+                    local zW = zoneEl.AbsoluteSize.X
+                    
+                    if needleX >= zX - 10 and needleX <= zX + zW + 10 then
+                        justPressed[guiKey] = true
+                        task.spawn(function()
+                            if skillCheckBtn then
+                                if firesignal then
+                                    pcall(function() skillCheckBtn:Activate() end)
+                                    pcall(function() firesignal(skillCheckBtn.MouseButton1Click) end)
+                                    pcall(function() firesignal(skillCheckBtn.Activated) end)
+                                elseif getconnections then
+                                    pcall(function() skillCheckBtn:Activate() end)
+                                    for _, c in ipairs(getconnections(skillCheckBtn.MouseButton1Click)) do pcall(function() c:Fire() end) end
                                 else
-                                    -- Fallback: klik kiri di posisi tengah zona
-                                    local cx = zX + zW / 2
-                                    local cy = zoneEl.AbsolutePosition.Y + zoneEl.AbsoluteSize.Y / 2
+                                    pcall(function() skillCheckBtn:Activate() end)
+                                    local bx = skillCheckBtn.AbsolutePosition.X + skillCheckBtn.AbsoluteSize.X / 2
+                                    local by = skillCheckBtn.AbsolutePosition.Y + skillCheckBtn.AbsoluteSize.Y / 2
                                     pcall(function()
-                                        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                                        VirtualInputManager:SendMouseButtonEvent(bx, by, 0, true, game, 1)
                                         task.wait(0.01)
-                                        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                                        VirtualInputManager:SendMouseButtonEvent(bx, by, 0, false, game, 1)
                                     end)
                                 end
-                            end)
-                            task.delay(0.3, function() justPressed[guiKey] = false end)
-                        end
-                    end
-                else
-                    -- === CIRCLE QTE (Lingkaran / TV Repair) ===
-                    -- Tidak ada jarum → klik semua tombol yang visible
-                    local function isGuiVisible(obj)
-                        if not obj or not obj:IsA("GuiObject") then return false end
-                        local cur = obj
-                        while cur and cur:IsA("GuiObject") do
-                            if not cur.Visible then return false end
-                            cur = cur.Parent
-                        end
-                        local layer = obj:FindFirstAncestorWhichIsA("LayerCollector")
-                        return not (layer and not layer.Enabled)
-                    end
-                    
-                    for _, btn in ipairs(gui:GetDescendants()) do
-                        if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and isGuiVisible(btn) then
-                            local sz = btn.AbsoluteSize
-                            local bpos = btn.AbsolutePosition
-                            if sz.X > 5 and sz.Y > 5 and sz.X < 500 and sz.Y < 500 and bpos.X >= 0 and bpos.Y >= 0 then
-                                task.spawn(function()
-                                    if firesignal then
-                                        pcall(function() btn:Activate() end)
-                                        pcall(function() firesignal(btn.MouseButton1Click) end)
-                                        pcall(function() firesignal(btn.MouseButton1Down) end)
-                                        pcall(function() firesignal(btn.Activated) end)
-                                        return
-                                    end
-                                    if getconnections then
-                                        pcall(function() btn:Activate() end)
-                                        for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
-                                        for _, c in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() c:Fire() end) end
-                                        for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
-                                        return
-                                    end
-                                    pcall(function() btn:Activate() end)
-                                    local cx = bpos.X + sz.X / 2
-                                    local cy = bpos.Y + sz.Y / 2
-                                    pcall(function()
-                                        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
-                                        task.wait(0.01)
-                                        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
-                                    end)
+                            else
+                                local cx = zX + zW / 2
+                                local cy = zoneEl.AbsolutePosition.Y + zoneEl.AbsoluteSize.Y / 2
+                                pcall(function()
+                                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                                    task.wait(0.01)
+                                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
                                 end)
                             end
-                        end
+                        end)
+                        task.delay(0.3, function() justPressed[guiKey] = false end)
                     end
                 end
             end
@@ -852,6 +841,177 @@ CreateToggle(FarmCard, "Auto Skill Check (TV & Kaset)", UDim2.new(0, 10, 0, 75),
     if isAutoSkillCheck then
         autoSkillCheck()
     end
+end)
+
+-- Tombol Debug Scanner GUI
+local debugScanGui = nil
+CreateButton(FarmCard, "🔍 Debug GUI Scanner", UDim2.new(0, 10, 0, 110), UDim2.new(1, -20, 0, 28), function()
+    if debugScanGui then
+        debugScanGui:Destroy()
+        debugScanGui = nil
+        return
+    end
+    
+    debugScanGui = Instance.new("ScreenGui")
+    debugScanGui.Name = "DebugScanner"
+    debugScanGui.ResetOnSpawn = false
+    debugScanGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    debugScanGui.DisplayOrder = 999
+    debugScanGui.Parent = LocalPlayer.PlayerGui
+    
+    local panel = Instance.new("Frame")
+    panel.Size = UDim2.new(0, 480, 0, 420)
+    panel.Position = UDim2.new(0.5, -240, 0.5, -210)
+    panel.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+    panel.BorderSizePixel = 0
+    panel.Parent = debugScanGui
+    Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 10)
+    
+    -- Title bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 40)
+    titleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = panel
+    Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 10)
+    
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Size = UDim2.new(1, -50, 1, 0)
+    titleLbl.Position = UDim2.new(0, 12, 0, 0)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = "🔍 Debug GUI Scanner - Aktifkan cassette QTE lalu Scan"
+    titleLbl.TextColor3 = Color3.fromRGB(200, 220, 255)
+    titleLbl.TextSize = 12
+    titleLbl.Font = Enum.Font.GothamBold
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    titleLbl.Parent = titleBar
+    
+    local closeX = Instance.new("TextButton")
+    closeX.Size = UDim2.new(0, 35, 0, 35)
+    closeX.Position = UDim2.new(1, -38, 0, 3)
+    closeX.BackgroundTransparency = 1
+    closeX.Text = "✕"
+    closeX.TextColor3 = Color3.fromRGB(180, 180, 180)
+    closeX.TextSize = 16
+    closeX.Font = Enum.Font.GothamBold
+    closeX.Parent = titleBar
+    closeX.MouseButton1Click:Connect(function()
+        debugScanGui:Destroy()
+        debugScanGui = nil
+    end)
+    
+    -- Scroll frame hasil scan
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size = UDim2.new(1, -20, 1, -90)
+    scroll.Position = UDim2.new(0, 10, 0, 48)
+    scroll.BackgroundColor3 = Color3.fromRGB(8, 8, 18)
+    scroll.BorderSizePixel = 0
+    scroll.ScrollBarThickness = 5
+    scroll.ScrollBarImageColor3 = Color3.fromRGB(80, 120, 200)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.Parent = panel
+    Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 6)
+    
+    local resultText = Instance.new("TextLabel")
+    resultText.Size = UDim2.new(1, -10, 0, 0)
+    resultText.Position = UDim2.new(0, 5, 0, 5)
+    resultText.BackgroundTransparency = 1
+    resultText.TextColor3 = Color3.fromRGB(150, 255, 150)
+    resultText.TextSize = 11
+    resultText.Font = Enum.Font.Code
+    resultText.TextXAlignment = Enum.TextXAlignment.Left
+    resultText.TextYAlignment = Enum.TextYAlignment.Top
+    resultText.TextWrapped = true
+    resultText.AutomaticSize = Enum.AutomaticSize.Y
+    resultText.Text = "Tekan  Scan  saat cassette/TV minigame aktif di layar game.\nHasil akan muncul di sini."
+    resultText.Parent = scroll
+    
+    -- Tombol bawah
+    local scanBtn = Instance.new("TextButton")
+    scanBtn.Size = UDim2.new(0.47, 0, 0, 32)
+    scanBtn.Position = UDim2.new(0, 10, 1, -38)
+    scanBtn.BackgroundColor3 = Color3.fromRGB(40, 100, 200)
+    scanBtn.Text = "🔍  Scan Sekarang"
+    scanBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    scanBtn.TextSize = 12
+    scanBtn.Font = Enum.Font.GothamBold
+    scanBtn.BorderSizePixel = 0
+    scanBtn.Parent = panel
+    Instance.new("UICorner", scanBtn).CornerRadius = UDim.new(0, 6)
+    
+    local copyBtn = Instance.new("TextButton")
+    copyBtn.Size = UDim2.new(0.47, 0, 0, 32)
+    copyBtn.Position = UDim2.new(0.53, -10, 1, -38)
+    copyBtn.BackgroundColor3 = Color3.fromRGB(30, 150, 70)
+    copyBtn.Text = "📋  Salin ke Clipboard"
+    copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    copyBtn.TextSize = 12
+    copyBtn.Font = Enum.Font.GothamBold
+    copyBtn.BorderSizePixel = 0
+    copyBtn.Parent = panel
+    Instance.new("UICorner", copyBtn).CornerRadius = UDim.new(0, 6)
+    
+    local scanData = ""
+    
+    scanBtn.MouseButton1Click:Connect(function()
+        local lines = {}
+        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if not playerGui then
+            resultText.Text = "ERROR: PlayerGui tidak ditemukan!"
+            return
+        end
+        
+        local found = false
+        for _, gui in ipairs(playerGui:GetChildren()) do
+            if gui:IsA("ScreenGui") and gui.Enabled
+               and gui.Name ~= "LoriNightmareUltimateHub"
+               and gui.Name ~= "DebugScanner" then
+                found = true
+                table.insert(lines, "====== GUI: [" .. gui.Name .. "] ======")
+                for _, d in ipairs(gui:GetDescendants()) do
+                    if d:IsA("GuiObject") then
+                        local t = ""
+                        pcall(function() t = d.Text end)
+                        local vis = d.Visible and "V" or "H"
+                        local sz = d.AbsoluteSize
+                        local pos = d.AbsolutePosition
+                        table.insert(lines, string.format(
+                            "[%s] %s | Name=%s | Text='%s' | Size=%.0fx%.0f | Pos=%.0f,%.0f",
+                            vis, d.ClassName, d.Name, t, sz.X, sz.Y, pos.X, pos.Y
+                        ))
+                    end
+                end
+                table.insert(lines, "")
+            end
+        end
+        
+        if not found then
+            scanData = "Tidak ada GUI aktif selain hub.\nBuka cassette/TV repair di game dulu!"
+        else
+            scanData = table.concat(lines, "\n")
+        end
+        
+        resultText.Text = scanData
+        task.wait()
+        scroll.CanvasSize = UDim2.new(0, 0, 0, resultText.AbsoluteSize.Y + 15)
+        scanBtn.Text = "✅  Scan Selesai!"
+        task.delay(1.5, function()
+            if scanBtn and scanBtn.Parent then scanBtn.Text = "🔍  Scan Sekarang" end
+        end)
+    end)
+    
+    copyBtn.MouseButton1Click:Connect(function()
+        if scanData ~= "" then
+            pcall(function() setclipboard(scanData) end)
+            copyBtn.Text = "✅  Tersalin!"
+        else
+            copyBtn.Text = "⚠  Scan dulu!"
+        end
+        task.delay(1.5, function()
+            if copyBtn and copyBtn.Parent then copyBtn.Text = "📋  Salin ke Clipboard" end
+        end)
+    end)
 end)
 
 -- Fitur 2: Teleport Ke TV Terdekat (Versi Sensor Adaptif ProximityPrompt)
@@ -1220,6 +1380,17 @@ local function findKillerRoot()
             if oName:find("nightmare") or oName:find("killer") or obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") then
                 local root = obj:FindFirstChild("HumanoidRootPart")
                 if root then return root end
+            end
+        end
+    end
+    
+    -- 4. Fallback WalkSpeed: killer biasanya lebih cepat (>22) dari survivor (12-16)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local pHum = p.Character:FindFirstChildOfClass("Humanoid")
+            local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
+            if pHum and pRoot and pHum.WalkSpeed > 22 then
+                return pRoot
             end
         end
     end

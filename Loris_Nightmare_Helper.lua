@@ -83,17 +83,26 @@ end
 -- ==========================================
 local customFont = nil
 local customFontBold = nil
-if LOCAL_FONT_NAME ~= "" and getcustomasset then
-    local successAsset, assetId = pcall(function()
-        return getcustomasset(LOCAL_FONT_NAME)
-    end)
-    if successAsset and assetId and assetId ~= "" then
+if LOCAL_FONT_NAME ~= "" then
+    if LOCAL_FONT_NAME:sub(1, 11) == "rbxasset://" then
         pcall(function()
-            customFont = Font.new(assetId)
+            customFont = Font.new(LOCAL_FONT_NAME)
         end)
         pcall(function()
-            customFontBold = Font.new(assetId, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+            customFontBold = Font.new(LOCAL_FONT_NAME, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
         end)
+    elseif getcustomasset then
+        local successAsset, assetId = pcall(function()
+            return getcustomasset(LOCAL_FONT_NAME)
+        end)
+        if successAsset and assetId and assetId ~= "" then
+            pcall(function()
+                customFont = Font.new(assetId)
+            end)
+            pcall(function()
+                customFontBold = Font.new(assetId, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+            end)
+        end
     end
 end
 
@@ -636,91 +645,168 @@ end)
 local isAutoSkillCheck = false
 local function autoSkillCheck()
     task.spawn(function()
+        -- Helper: Cek Visibilitas GUI Secara Rekursif (Memastikan elemen benar-benar terlihat di layar)
+        local function isGuiVisible(guiObject)
+            if not guiObject then return false end
+            if not guiObject:IsA("GuiObject") then return false end
+            
+            local current = guiObject
+            while current and current:IsA("GuiObject") do
+                if not current.Visible then
+                    return false
+                end
+                current = current.Parent
+            end
+            
+            local parentGui = guiObject:FindFirstAncestorWhichIsA("LayerCollector")
+            if parentGui and not parentGui.Enabled then
+                return false
+            end
+            
+            return true
+        end
+
+        -- Helper: Cari GUI TV di Workspace jika dekat player (Mendukung QTE dalam bentuk SurfaceGui/BillboardGui di TV)
+        local function getNearbyTVGui()
+            local char = LocalPlayer.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if not root then return nil end
+            
+            local tvs = findTVs()
+            for _, tv in ipairs(tvs) do
+                if tv and tv.Parent then
+                    local dist = (tv.Position - root.Position).Magnitude
+                    if dist < 18 then -- Rentang 18 studs dekat TV
+                        for _, child in ipairs(tv:GetDescendants()) do
+                            if (child:IsA("BillboardGui") or child:IsA("SurfaceGui")) and child.Enabled then
+                                return child
+                            end
+                        end
+                        for _, child in ipairs(tv.Parent:GetDescendants()) do
+                            if (child:IsA("BillboardGui") or child:IsA("SurfaceGui")) and child.Enabled then
+                                return child
+                            end
+                        end
+                    end
+                end
+            end
+            return nil
+        end
+
         while isAutoSkillCheck do
             task.wait(0.005)
             
-            local searchContainers = {LocalPlayer:FindFirstChild("PlayerGui"), CoreGui}
+            local guisToScan = {}
             
-            for _, container in ipairs(searchContainers) do
-                if container then
-                    for _, gui in ipairs(container:GetChildren()) do
-                        -- Skip GUI buatan hub kita agar tidak salah klik
-                        if gui:IsA("ScreenGui") and gui.Enabled and gui.Name ~= "LoriNightmareUltimateHub" then
-                            local gName = gui.Name:lower()
+            -- 1. Scan PlayerGui
+            local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+            if playerGui then
+                for _, gui in ipairs(playerGui:GetChildren()) do
+                    if (gui:IsA("ScreenGui") or gui:IsA("BillboardGui") or gui:IsA("SurfaceGui")) and gui.Enabled and gui.Name ~= "LoriNightmareUltimateHub" then
+                        table.insert(guisToScan, gui)
+                    end
+                end
+            end
+            
+            -- 2. Scan CoreGui (Pencegahan kegagalan / executor safety)
+            pcall(function()
+                if CoreGui then
+                    for _, gui in ipairs(CoreGui:GetChildren()) do
+                        if (gui:IsA("ScreenGui") or gui:IsA("BillboardGui") or gui:IsA("SurfaceGui")) and gui.Enabled and gui.Name ~= "LoriNightmareUltimateHub" then
+                            table.insert(guisToScan, gui)
+                        end
+                    end
+                end
+            end)
+            
+            -- 3. Scan Workspace (Jika QTE digambar langsung pada objek TV 3D)
+            local workspaceGui = getNearbyTVGui()
+            if workspaceGui then
+                table.insert(guisToScan, workspaceGui)
+            end
+            
+            -- Jalankan deteksi QTE pada semua GUI yang terkumpul
+            for _, gui in ipairs(guisToScan) do
+                local gName = gui.Name:lower()
+                local isMinigameGui = false
+                
+                -- Cek apakah GUI merupakan QTE/Skill Check/Repair Screen
+                if gName:find("repair") or gName:find("tv") or gName:find("skill") or gName:find("qte") or gName:find("kaset") or gName:find("tape") or gName:find("cassette") or gName:find("minigame") or gName:find("play") or gName:find("interaction") or gName:find("interact") or gName:find("television") or
+                   gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Circle", true) or gui:FindFirstChild("Ball", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Pointer", true) then
+                    isMinigameGui = true
+                end
+                
+                if isMinigameGui then
+                    -- A. SENSOR PETA LINGKARAN (Circle Skillcheck / Click Ball)
+                    for _, btn in ipairs(gui:GetDescendants()) do
+                        if (btn:IsA("ImageButton") or btn:IsA("TextButton") or btn:IsA("ImageLabel") or btn:IsA("Frame")) and isGuiVisible(btn) then
+                            local bName = btn.Name:lower()
+                            local parentName = btn.Parent and btn.Parent.Name:lower() or ""
                             
-                            -- Deteksi ScreenGui yang relevan dengan minigame / QTE
-                            if gName:find("repair") or gName:find("tv") or gName:find("skill") or gName:find("qte") or gName:find("kaset") or gName:find("tape") or gName:find("cassette") or gName:find("minigame") or gName:find("play") or gName:find("interaction") or gName:find("interact") or gName:find("television") or
-                               gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Circle", true) or gui:FindFirstChild("Ball", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Pointer", true) then
+                            -- Deteksi tombol/objek lingkaran QTE
+                            local isClickTarget = bName:find("circle") or bName:find("ball") or bName:find("click") or bName:find("tap") or bName:find("node") or bName:find("target") or bName:find("button") or bName:find("ring") or bName:find("hit") or
+                                                  parentName:find("circle") or parentName:find("ball") or parentName:find("click") or parentName:find("tap") or parentName:find("target") or
+                                                  btn:IsA("ImageButton") or btn:IsA("TextButton")
+                            
+                            if isClickTarget then
+                                local size = btn.AbsoluteSize
+                                local pos = btn.AbsolutePosition
                                 
-                                -- 1. SENSOR PETA LINGKARAN (Circle Skillcheck / Click Ball)
-                                for _, btn in ipairs(gui:GetDescendants()) do
-                                    if (btn:IsA("ImageButton") or btn:IsA("TextButton") or btn:IsA("ImageLabel") or btn:IsA("Frame")) and btn.Visible then
-                                        local bName = btn.Name:lower()
-                                        local parentName = btn.Parent and btn.Parent.Name:lower() or ""
+                                if size.X > 5 and size.Y > 5 and pos.X >= 0 and pos.Y >= 0 then
+                                    -- Jalankan klik secara asinkron agar tidak memblokir loop scanning utama
+                                    task.spawn(function()
+                                        -- 1. standard button activation
+                                        if btn:IsA("ImageButton") or btn:IsA("TextButton") then
+                                            pcall(function() btn:Activate() end)
+                                        end
                                         
-                                        -- Cek apakah elemen ini merupakan target klik lingkaran
-                                        if bName:find("circle") or bName:find("ball") or bName:find("click") or bName:find("tap") or bName:find("node") or bName:find("target") or bName:find("button") or bName:find("ring") or bName:find("hit") or
-                                           parentName:find("circle") or parentName:find("ball") or parentName:find("click") or parentName:find("tap") or parentName:find("target") or
-                                           (btn:IsA("ImageButton") or btn:IsA("TextButton")) then
-                                            
-                                            local size = btn.AbsoluteSize
-                                            local pos = btn.AbsolutePosition
-                                            
-                                            -- Pastikan elemen memiliki ukuran fisik dan ada di layar
-                                            if size.X > 5 and size.Y > 5 and pos.X >= 0 and pos.Y >= 0 then
-                                                pcall(function()
-                                                    -- A. Method 1: Activate standard button
-                                                    if btn:IsA("ImageButton") or btn:IsA("TextButton") then
-                                                        btn:Activate()
-                                                    end
-                                                    
-                                                    -- B. Method 2: Fire standard connections (click, down, activated, inputbegan)
-                                                    if getconnections then
-                                                        if btn:IsA("ImageButton") or btn:IsA("TextButton") then
-                                                            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do conn:Fire() end
-                                                            for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do conn:Fire() end
-                                                            for _, conn in ipairs(getconnections(btn.Activated)) do conn:Fire() end
-                                                        end
-                                                        for _, conn in ipairs(getconnections(btn.InputBegan)) do
-                                                            pcall(function() conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end)
-                                                        end
-                                                    end
-                                                    
-                                                    -- C. Method 3: VirtualInputManager click (paling bulletproof & mem-bypass proteksi custom UI)
-                                                    local centerX = pos.X + (size.X / 2)
-                                                    local centerY = pos.Y + (size.Y / 2)
-                                                    VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
-                                                    task.wait(0.01)
-                                                    VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
-                                                end)
+                                        -- 2. fire connections
+                                        if getconnections then
+                                            if btn:IsA("ImageButton") or btn:IsA("TextButton") then
+                                                for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() conn:Fire() end) end
+                                                for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() conn:Fire() end) end
+                                                for _, conn in ipairs(getconnections(btn.Activated)) do pcall(function() conn:Fire() end) end
+                                            end
+                                            for _, conn in ipairs(getconnections(btn.InputBegan)) do
+                                                pcall(function() conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end)
                                             end
                                         end
-                                    end
-                                end
-                                
-                                -- 2. SENSOR KASET TAPE DENGAN BAR ALIGNMENT & KEYBOARD EMULATOR (Spacebar QTE)
-                                local pointer = gui:FindFirstChild("Pointer", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Bar", true) or gui:FindFirstChild("Pin", true) or gui:FindFirstChild("Indicator", true)
-                                local zone = gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("GreenBar", true) or gui:FindFirstChild("PerfectZone", true)
-                                
-                                if pointer and zone then
-                                    local pPos = pointer.AbsolutePosition
-                                    local zPos = zone.AbsolutePosition
-                                    local zSize = zone.AbsoluteSize
-                                    
-                                    -- Check overlap horizontal & vertical
-                                    local hOverlap = pPos.X >= (zPos.X - 5) and pPos.X <= (zPos.X + zSize.X + 5)
-                                    local vOverlap = pPos.Y >= (zPos.Y - 5) and pPos.Y <= (zPos.Y + zSize.Y + 5)
-                                    
-                                    if hOverlap or vOverlap then
+                                        
+                                        -- 3. virtual mouse click (Direct bypass)
+                                        local centerX = pos.X + (size.X / 2)
+                                        local centerY = pos.Y + (size.Y / 2)
                                         pcall(function()
-                                            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                                            VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
                                             task.wait(0.01)
-                                            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                            VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
                                         end)
-                                        task.wait(0.12)
-                                    end
+                                    end)
                                 end
                             end
+                        end
+                    end
+                    
+                    -- B. SENSOR KASET TAPE DENGAN BAR ALIGNMENT (Spacebar QTE)
+                    local pointer = gui:FindFirstChild("Pointer", true) or gui:FindFirstChild("Needle", true) or gui:FindFirstChild("Bar", true) or gui:FindFirstChild("Pin", true) or gui:FindFirstChild("Indicator", true)
+                    local zone = gui:FindFirstChild("Zone", true) or gui:FindFirstChild("Success", true) or gui:FindFirstChild("Target", true) or gui:FindFirstChild("GreenBar", true) or gui:FindFirstChild("PerfectZone", true)
+                    
+                    if pointer and zone and isGuiVisible(pointer) and isGuiVisible(zone) then
+                        local pPos = pointer.AbsolutePosition
+                        local zPos = zone.AbsolutePosition
+                        local zSize = zone.AbsoluteSize
+                        
+                        local hOverlap = pPos.X >= (zPos.X - 5) and pPos.X <= (zPos.X + zSize.X + 5)
+                        local vOverlap = pPos.Y >= (zPos.Y - 5) and pPos.Y <= (zPos.Y + zSize.Y + 5)
+                        
+                        if hOverlap or vOverlap then
+                            task.spawn(function()
+                                pcall(function()
+                                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                                    task.wait(0.01)
+                                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                                end)
+                            end)
+                            task.wait(0.12) -- Jeda kecil agar tidak spam input berganda
                         end
                     end
                 end

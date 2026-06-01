@@ -718,13 +718,49 @@ local function autoSkillCheck()
             
             local activeGui = nil
             local activeName = ""
+
+            -- TAHAP 1: Cari berdasarkan NAMA GUI (mendukung variasi nama, bukan hanya exact match)
             for _, gui in ipairs(playerGui:GetChildren()) do
-                if gui:IsA("ScreenGui") and gui.Enabled and gui.Name ~= "LoriNightmareUltimateHub" then
-                    local gName = gui.Name:lower()
-                    if gName == "barminigame" or gName == "minigame" then
-                        activeGui = gui
-                        activeName = gName
-                        break
+                if (gui:IsA("ScreenGui") or gui:IsA("GuiBase2d")) and gui.Name ~= "LoriNightmareUltimateHub" and gui.Name ~= "DebugScanner" then
+                    local enabled = true
+                    pcall(function() enabled = gui.Enabled end)
+                    if enabled then
+                        local gName = gui.Name:lower()
+                        if gName == "barminigame" or gName:find("skill") or gName:find("repair") or gName:find("cassette") or gName:find("kaset") or gName:find("qte") then
+                            activeGui = gui
+                            activeName = "barminigame"
+                            break
+                        elseif gName == "minigame" or gName:find("coin") then
+                            activeGui = gui
+                            activeName = "minigame"
+                            break
+                        end
+                    end
+                end
+            end
+
+            -- TAHAP 2: Fallback ADAPTIF — deteksi berdasarkan STRUKTUR elemen jika nama GUI tidak dikenal
+            if not activeGui then
+                for _, gui in ipairs(playerGui:GetChildren()) do
+                    if (gui:IsA("ScreenGui") or gui:IsA("GuiBase2d")) and gui.Name ~= "LoriNightmareUltimateHub" and gui.Name ~= "DebugScanner" then
+                        local enabled = true
+                        pcall(function() enabled = gui.Enabled end)
+                        if enabled then
+                            local hasGoal, hasBar, hasCoin = false, false, false
+                            for _, d in ipairs(gui:GetDescendants()) do
+                                if d:IsA("GuiObject") and d.Visible then
+                                    local dn = d.Name:lower()
+                                    if dn == "goal" then hasGoal = true end
+                                    if dn == "bar" then hasBar = true end
+                                    if dn == "coin" or dn == "goldnocoin" then hasCoin = true end
+                                end
+                            end
+                            if hasGoal and hasBar then
+                                activeGui = gui; activeName = "barminigame"; break
+                            elseif hasCoin then
+                                activeGui = gui; activeName = "minigame"; break
+                            end
+                        end
                     end
                 end
             end
@@ -750,6 +786,28 @@ local function autoSkillCheck()
                     return not (layer and not layer.Enabled)
                 end
                 
+                -- Helper: tekan tombol keyboard fisik (fallback untuk skill check berbasis keypress)
+                local function pressKey(keyCode)
+                    if not VirtualInputManager then return false end
+                    local ok = pcall(function()
+                        VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+                        task.wait(0.03)
+                        VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+                    end)
+                    return ok
+                end
+
+                -- Helper klik di koordinat layar absolut (fallback bila tidak ada GUI button spesifik)
+                local function clickAt(cx, cy)
+                    if not VirtualInputManager then return false end
+                    local ok = pcall(function()
+                        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                        task.wait(0.01)
+                        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                    end)
+                    return ok
+                end
+
                 -- Helper klik button (isSilent=true untuk koin koin, isSilent=false untuk kaset agar menggunakan raw input fisik)
                 local function clickBtn(btn, isSilent)
                     if not btn then return end
@@ -774,17 +832,34 @@ local function autoSkillCheck()
                             end
                         else
                             -- Cassette QTE: Physical single hardware click/tap (Bypasses custom UIS and doesn't double-click)
-                            local guiInset = game:GetService("GuiService"):GetGuiInset()
-                            local bp = btn.AbsolutePosition
-                            local bs = btn.AbsoluteSize
-                            local cx = bp.X + bs.X / 2
-                            local cy = bp.Y + bs.Y / 2 + guiInset.Y
+                            local clickSuccess = false
+                            if VirtualInputManager then
+                                pcall(function()
+                                    local guiInset = game:GetService("GuiService"):GetGuiInset()
+                                    local bp = btn.AbsolutePosition
+                                    local bs = btn.AbsoluteSize
+                                    local cx = bp.X + bs.X / 2
+                                    local cy = bp.Y + bs.Y / 2 + guiInset.Y
+                                    
+                                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                                    task.wait(0.01)
+                                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                                    clickSuccess = true
+                                end)
+                            end
                             
-                            pcall(function()
-                                VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
-                                task.wait(0.01)
-                                VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
-                            end)
+                            -- Fallback virtual click jika VirtualInputManager gagal/tidak ada di executor ini
+                            if not clickSuccess then
+                                if firesignal then
+                                    pcall(function() firesignal(btn.MouseButton1Click) end)
+                                elseif getconnections then
+                                    for _, c in ipairs(getconnections(btn.MouseButton1Click)) do
+                                        pcall(function() c:Fire() end)
+                                    end
+                                else
+                                    pcall(function() btn:Activate() end)
+                                end
+                            end
                         end
                     end)
                 end
@@ -797,7 +872,7 @@ local function autoSkillCheck()
                     -- PENTING: Cari jarum ("bar") & kaset ("Goal") di descendants yang VISIBLE saja!
                     -- Ini menjamin kita tidak klik prematur sebelum kasetnya muncul di layar.
                     for _, d in ipairs(activeGui:GetDescendants()) do
-                        if d:IsA("GuiObject") and isGuiVisible(d) then
+                        if d:IsA("GuiObject") and d.Visible then
                             local dNameLower = d.Name:lower()
                             if dNameLower == "bar" then
                                 if needle == nil or d.AbsoluteSize.X < needle.AbsoluteSize.X then
@@ -815,7 +890,7 @@ local function autoSkillCheck()
                     
                     if not skillBtn then
                         for _, d in ipairs(activeGui:GetDescendants()) do
-                            if (d:IsA("TextButton") or d:IsA("ImageButton")) and isGuiVisible(d) then
+                            if (d:IsA("TextButton") or d:IsA("ImageButton")) and d.Visible then
                                 local dName = d.Name:lower()
                                 if dName:find("skill") or dName:find("check") or dName:find("button") then
                                     skillBtn = d
@@ -834,18 +909,34 @@ local function autoSkillCheck()
                         notify("Helper QTE", debugStr, 3)
                     end
                     
-                    if needle and tape and skillBtn and not justPressed[guiKey] then
+                    if needle and tape and not justPressed[guiKey] then
                         if needle.AbsoluteSize.X > 0 and tape.AbsoluteSize.X > 0 and tape.AbsolutePosition.X > 0 and needle.AbsolutePosition.X > 0 then
                             local needleCenter = needle.AbsolutePosition.X + needle.AbsoluteSize.X / 2
                             local tapeLeft     = tape.AbsolutePosition.X
                             local tapeRight    = tapeLeft + tape.AbsoluteSize.X
-                            
-                            -- Klik tepat di area kaset (100% presisi tanpa pre-fire)
-                            if needleCenter >= tapeLeft and needleCenter <= tapeRight then
+
+                            -- Toleransi kecil agar tidak meleset di tepi zona (5% lebar kaset)
+                            local margin = math.max(2, tape.AbsoluteSize.X * 0.05)
+
+                            -- Klik tepat di area kaset (presisi tinggi)
+                            if needleCenter >= (tapeLeft - margin) and needleCenter <= (tapeRight + margin) then
                                 justPressed[guiKey] = true
                                 notify("Helper QTE", "Memicu Klik Kaset!", 1.5)
-                                clickBtn(skillBtn, false) -- Klik fisik tunggal presisi
-                                task.delay(0.5, function()
+
+                                -- Metode 1: klik GUI button spesifik jika ada
+                                if skillBtn then
+                                    clickBtn(skillBtn, false)
+                                end
+
+                                -- Metode 2: klik fisik di posisi kaset (untuk skill check tanpa button GUI)
+                                local guiInset = game:GetService("GuiService"):GetGuiInset()
+                                clickAt(needleCenter, tape.AbsolutePosition.Y + tape.AbsoluteSize.Y / 2 + guiInset.Y)
+
+                                -- Metode 3: keypress fallback (Space & E adalah tombol QTE paling umum)
+                                pressKey(Enum.KeyCode.Space)
+                                pressKey(Enum.KeyCode.E)
+
+                                task.delay(0.4, function()
                                     justPressed[guiKey] = false
                                 end)
                             end
@@ -1572,7 +1663,7 @@ local function findKillerRoot()
         if obj:IsA("Model") and obj ~= LocalPlayer.Character then
             local hum = obj:FindFirstChildOfClass("Humanoid")
             local root = obj:FindFirstChild("HumanoidRootPart")
-            if hum and root and not root.Anchored then
+            if hum and root and root:IsA("BasePart") and not root.Anchored then
                 local oName = obj.Name:lower()
                 
                 -- Killer Bot harus memenuhi salah satu kriteria kuat ini
@@ -1677,7 +1768,28 @@ local function autoFollowKillerLoop()
         autoFollowConn:Disconnect()
         autoFollowConn = nil
     end
-    
+
+    -- Notifikasi status di layar (agar user tahu kenapa follow tidak jalan)
+    local function notify(title, text, duration)
+        pcall(function()
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = title, Text = text, Duration = duration or 2
+            })
+        end)
+    end
+    local lastStatusTime = 0
+    local lastStatusMsg = ""
+    local function status(msg)
+        if msg ~= lastStatusMsg or (os.clock() - lastStatusTime > 4) then
+            lastStatusTime = os.clock()
+            lastStatusMsg = msg
+            notify("Auto Follow", msg, 2)
+            print("[AUTO-FOLLOW] " .. msg)
+        end
+    end
+
+    notify("Auto Follow", "Aktif! Menunggu kondisi knocked...", 3)
+
     -- Monitor tombol SLIP AWAY di PlayerGui secara berkala
     task.spawn(function()
         local hookedButtons = {} -- Track tombol yang sudah di-hook
@@ -1730,7 +1842,9 @@ local function autoFollowKillerLoop()
                 end
                 return
             end
-            
+
+            status("Knocked terdeteksi! Mencari killer...")
+
             local killerRoot = findKillerRoot()
             if killerRoot then
                 if root.Anchored then
@@ -1744,6 +1858,8 @@ local function autoFollowKillerLoop()
                 
                 -- Teleport ke atas killer (3 stud ke atas, 2 stud di belakang)
                 root.CFrame = killerRoot.CFrame * CFrame.new(0, 3, 2)
+            else
+                status("Killer tidak ditemukan (cek F9 console untuk detail)")
             end
         end
     end)

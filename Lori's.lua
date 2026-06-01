@@ -319,20 +319,18 @@ local function checkIfKiller(player)
     if not player then return false end
     if player == LocalPlayer then return false end
 
-    -- 1. Deteksi apakah ada ronde pertandingan yang sedang berjalan aktif
+    -- 1. Deteksi apakah ada ronde pertandingan yang sedang berjalan aktif (Lives ~= nil)
     local isMatchActive = false
     for _, p in ipairs(Players:GetPlayers()) do
-        local lives = getAttribute(p, "Lives")
-        if lives and tonumber(lives) and tonumber(lives) > 0 then
+        if getAttribute(p, "Lives") ~= nil then
             isMatchActive = true
             break
         end
     end
 
     if isMatchActive then
-        -- 2. Di dalam Match: Siapa pun yang TIDAK memiliki nyawa > 0 adalah Killer
-        local lives = getAttribute(player, "Lives")
-        if not lives or not tonumber(lives) or tonumber(lives) <= 0 then
+        -- 2. Di dalam Match: Siapa pun yang TIDAK memiliki atribut Lives secara mutlak adalah Killer
+        if getAttribute(player, "Lives") == nil then
             return true
         end
     else

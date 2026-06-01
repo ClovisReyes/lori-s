@@ -42,6 +42,12 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then
+    pcall(function()
+        Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    end)
+    LocalPlayer = Players.LocalPlayer
+end
 
 -- Target Parent (CoreGui jika didukung write access oleh executor, PlayerGui sebagai fallback solid)
 local TargetParent = nil
@@ -342,7 +348,7 @@ local function checkIfKiller(player)
         for _, child in ipairs(char:GetDescendants()) do
             if child:IsA("BasePart") or child:IsA("Model") then
                 local tName = child.Name:lower()
-                local isAccessory = child:FindFirstAncestorOfClass("Accessory") ~= nil
+                local isAccessory = child:FindFirstAncestorWhichIsA("Accessory") ~= nil
                 if not isAccessory then
                     if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") or tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or tName:find("sickle") then
                         return true

@@ -136,6 +136,25 @@ if getcustomasset then
     end
 end
 
+-- Helper: Scan model untuk lampu merah / vision cone (biasanya dimiliki killer)
+local function hasRedLightOrStain(model)
+    if not model then return false end
+    for _, child in ipairs(model:GetDescendants()) do
+        if child:IsA("Light") then
+            local color = child.Color
+            if color.R > 0.7 and color.G < 0.3 and color.B < 0.3 then
+                return true
+            end
+        elseif child:IsA("BasePart") and (child.Name:lower():find("stain") or child.Name:lower():find("red") or child.Name:lower():find("light")) then
+            local color = child.Color
+            if color.R > 0.7 and color.G < 0.3 and color.B < 0.3 then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 -- Helper: Cek Apakah Player Adalah Killer (The Nightmare)
 -- PENTING: Default ke Survivor (Hijau) jika tidak yakin — mencegah false-positive
 local function checkIfKiller(player)
@@ -152,7 +171,7 @@ local function checkIfKiller(player)
         end
         
         -- Jika nama tim jelas killer → pasti Merah
-        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") then
+        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("lori") or tName:find("chaser") or tName:find("hunter") then
             return true
         end
         
@@ -178,14 +197,14 @@ local function checkIfKiller(player)
     local char = player.Character
     for _, obj in ipairs({player, char}) do
         if obj then
-            for _, attr in ipairs({"Role", "IsKiller", "IsNightmare"}) do
+            for _, attr in ipairs({"Role", "IsKiller", "IsNightmare", "Team", "Slasher"}) do
                 local val = obj:GetAttribute(attr)
                 if val then
                     local s = tostring(val):lower()
                     -- Hanya return true jika nama atributnya spesifik dan jelas
-                    if attr == "IsKiller" or attr == "IsNightmare" then
+                    if attr == "IsKiller" or attr == "IsNightmare" or attr == "Slasher" then
                         if val == true then return true end
-                    elseif s == "nightmare" or s == "killer" or s == "monster" then
+                    elseif s == "nightmare" or s == "killer" or s == "monster" or s == "lori" or s == "slasher" or s == "chaser" or s == "hunter" then
                         return true
                     elseif s == "child" or s == "survivor" or s == "children" then
                         return false
@@ -199,7 +218,12 @@ local function checkIfKiller(player)
     if char then
         local cName = char.Name:lower()
         -- Hanya match nama monster yang sudah dikonfirmasi dari game ini
-        if cName == "nightmare" or cName == "carnivore" or cName == "phantom" or cName == "tarantula" then
+        if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("lori") or cName:find("slasher") or cName:find("chaser") or cName:find("hunter") or cName:find("killer") or cName:find("monster") then
+            return true
+        end
+        
+        -- Cek Red Light / Stain
+        if hasRedLightOrStain(char) then
             return true
         end
     end
@@ -654,14 +678,6 @@ local function autoSkillCheck()
         local lastNeedleX = {}
         local justPressed = {}
         
-        local function pressSpace()
-            pcall(function()
-                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                task.wait(0.01)
-                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-            end)
-        end
-
         while isAutoSkillCheck do
             task.wait(0.05) -- 20fps, 10x lebih ringan dari sebelumnya
             
@@ -688,18 +704,20 @@ local function autoSkillCheck()
                         return not (layer and not layer.Enabled)
                     end
                     
-                    -- Helper klik button apapun (Mendukung Android & PC secara murni dan silent)
+                    -- Helper klik button apapun (Mendukung Android & PC secara murni dan fisik)
                     local function clickBtn(btn)
                         if not btn then return end
                         task.spawn(function()
+                            -- 1. Klik virtual via firesignal (sangat bagus untuk Android/PC memory-level)
                             if firesignal then
                                 pcall(function() btn:Activate() end)
                                 pcall(function() firesignal(btn.MouseButton1Down) end)
                                 pcall(function() firesignal(btn.MouseButton1Up) end)
                                 pcall(function() firesignal(btn.MouseButton1Click) end)
                                 pcall(function() firesignal(btn.Activated) end)
-                                return
                             end
+                            
+                            -- 2. Klik virtual via getconnections
                             if getconnections then
                                 pcall(function() btn:Activate() end)
                                 for _, event in ipairs({btn.MouseButton1Down, btn.MouseButton1Up, btn.MouseButton1Click, btn.Activated}) do
@@ -707,8 +725,9 @@ local function autoSkillCheck()
                                         pcall(function() c:Fire() end)
                                     end
                                 end
-                                return
                             end
+                            
+                            -- 3. JALANKAN KLIK KIRI FISIK (PC) & TAP FISIK TOMBOL (Android) secara murni via VirtualInputManager!
                             pcall(function() btn:Activate() end)
                             local bp = btn.AbsolutePosition
                             local bs = btn.AbsoluteSize
@@ -733,40 +752,70 @@ local function autoSkillCheck()
                         for _, d in ipairs(gui:GetDescendants()) do
                             if d:IsA("GuiObject") and isGuiVisible(d) then
                                 local dName = d.Name
-                                local sz = d.AbsoluteSize
                                 
-                                -- 1. Cari Jarum (Frame tipis bernama "bar")
+                                -- 1. Cari Jarum (Frame tipis bernama "bar" yang bergerak)
                                 if dName == "bar" and d:IsA("Frame") then
-                                    if needle == nil or sz.X < needle.AbsoluteSize.X then
+                                    local currentX = d.AbsolutePosition.X
+                                    local lastX = lastNeedleX[d]
+                                    if lastX and math.abs(currentX - lastX) > 0.05 then
                                         needle = d
                                     end
+                                    lastNeedleX[d] = currentX
                                 end
                                 
-                                -- 2. Cari Tape (ImageLabel "img" berukuran sedang/besar)
-                                if (dName == "img" or dName:lower():find("tape") or dName:lower():find("kaset") or dName:lower():find("goal")) and d:IsA("ImageLabel") then
-                                    if sz.X >= 40 and sz.X <= 150 then
-                                        tape = d
-                                    end
+                                -- 2. Cari Tape / Goal (ImageLabel atau Frame bernama "Goal")
+                                if dName == "Goal" and (d:IsA("ImageLabel") or d:IsA("Frame")) then
+                                    tape = d
                                 end
                                 
                                 -- 3. Cari Tombol Klik
-                                if (dName == "SkillCheck" or dName == "Button" or dName:lower():find("check")) and (d:IsA("TextButton") or d:IsA("ImageButton")) then
+                                if dName == "SkillCheck" and (d:IsA("TextButton") or d:IsA("ImageButton")) then
                                     skillBtn = d
                                 end
                             end
                         end
                         
-                        -- Fallback jika tape belum ketemu: cari ImageLabel "img" terbesar
-                        if not tape then
-                            local largestImg = nil
+                        -- Fallback 1: Jika needle belum ketemu, cari Frame "bar" dengan ukuran X terkecil
+                        if not needle then
                             for _, d in ipairs(gui:GetDescendants()) do
-                                if d.Name == "img" and d:IsA("ImageLabel") and isGuiVisible(d) then
-                                    if largestImg == nil or d.AbsoluteSize.X > largestImg.AbsoluteSize.X then
-                                        largestImg = d
+                                if d.Name == "bar" and d:IsA("Frame") and isGuiVisible(d) then
+                                    if needle == nil or d.AbsoluteSize.X < needle.AbsoluteSize.X then
+                                        needle = d
                                     end
                                 end
                             end
-                            tape = largestImg
+                        end
+                        
+                        -- Fallback 2: Jika tape/Goal belum ketemu, cari ImageLabel/Frame berukuran sedang yang posisinya paling kanan (X terbesar)
+                        if not tape then
+                            local bestEl = nil
+                            local maxX = -1
+                            for _, d in ipairs(gui:GetDescendants()) do
+                                if (d:IsA("ImageLabel") or d:IsA("Frame")) and isGuiVisible(d) then
+                                    local sz = d.AbsoluteSize
+                                    local pos = d.AbsolutePosition
+                                    if sz.X >= 15 and sz.X <= 150 then
+                                        if pos.X > maxX then
+                                            maxX = pos.X
+                                            bestEl = d
+                                        end
+                                    end
+                                end
+                            end
+                            tape = bestEl
+                        end
+                        
+                        -- Fallback 3: Jika skillBtn belum ketemu, cari TextButton/ImageButton yang visible
+                        if not skillBtn then
+                            for _, d in ipairs(gui:GetDescendants()) do
+                                if (d:IsA("TextButton") or d:IsA("ImageButton")) and isGuiVisible(d) then
+                                    local dName = d.Name:lower()
+                                    if dName:find("skill") or dName:find("check") or dName:find("button") then
+                                        skillBtn = d
+                                        break
+                                    end
+                                end
+                            end
                         end
                         
                         -- Klik dan tekan Spacebar ketika jarum berada di dalam area tape
@@ -786,9 +835,6 @@ local function autoSkillCheck()
                                     if skillBtn then
                                         clickBtn(skillBtn)
                                     end
-                                    
-                                    -- Kirim input Spacebar
-                                    pressSpace()
                                     
                                     -- Jeda agar tidak terjadi klik ganda
                                     task.delay(0.5, function()
@@ -1477,7 +1523,8 @@ local function findKillerRoot()
             local oName = obj.Name:lower()
             if oName:find("nightmare") or oName:find("killer") or oName:find("monster") or 
                oName:find("carnivore") or oName:find("phantom") or oName:find("tarantula") or oName:find("spider") or
-               obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") then
+               oName:find("lori") or oName:find("slasher") or oName:find("chaser") or oName:find("hunter") or
+               obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") or hasRedLightOrStain(obj) then
                 local root = obj:FindFirstChild("HumanoidRootPart")
                 if root then 
                     if debugLog then
@@ -1494,7 +1541,9 @@ local function findKillerRoot()
         if obj:IsA("Model") and obj ~= LocalPlayer.Character then
             local oName = obj.Name:lower()
             if oName:find("nightmare") or oName:find("killer") or obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") or
-               oName:find("carnivore") or oName:find("phantom") or oName:find("tarantula") or oName:find("spider") then
+               oName:find("carnivore") or oName:find("phantom") or oName:find("tarantula") or oName:find("spider") or
+               oName:find("lori") or oName:find("slasher") or oName:find("chaser") or oName:find("hunter") or
+               hasRedLightOrStain(obj) then
                 local root = obj:FindFirstChild("HumanoidRootPart")
                 if root then 
                     if debugLog then
@@ -1506,12 +1555,12 @@ local function findKillerRoot()
         end
     end
     
-    -- 4. Fallback WalkSpeed: killer biasanya lebih cepat (>22) dari survivor (12-16)
+    -- 4. Fallback WalkSpeed: killer biasanya lebih cepat (>20) dari survivor (12-16)
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character then
             local pHum = p.Character:FindFirstChildOfClass("Humanoid")
             local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
-            if pHum and pRoot and pHum.WalkSpeed > 22 then
+            if pHum and pRoot and pHum.WalkSpeed > 20 then
                 -- Pastikan bukan survivor berdasarkan tim (menghindari false-positive)
                 local isSurvivor = false
                 if p.Team then
@@ -1522,7 +1571,7 @@ local function findKillerRoot()
                 end
                 if not isSurvivor then
                     if debugLog then
-                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Fallback WalkSpeed > 22): " .. p.Name)
+                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Fallback WalkSpeed > 20): " .. p.Name)
                     end
                     return pRoot
                 end
@@ -1583,6 +1632,17 @@ local function autoFollowKillerLoop()
             return
         end
         
+        -- HANYA follow jika player sedang knocked (downed)
+        if not isPlayerKnocked() then
+            -- Kembalikan platform stand jika sebelumnya aktif
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum and hum.PlatformStand then
+                hum.PlatformStand = false
+            end
+            return
+        end
+        
         -- Jika slip away aktif, resume otomatis saat mati/downed lagi
         if slipAwayPaused then
             -- Re-engage jika player sudah mati lagi (health <= 1)
@@ -1599,8 +1659,17 @@ local function autoFollowKillerLoop()
         local root = char and char:FindFirstChild("HumanoidRootPart")
         
         if root and killerRoot then
-            -- Nempel tepat di belakang killer, 2 stud di atas (mengikuti kemana pun killer pergi)
-            root.CFrame = killerRoot.CFrame * CFrame.new(0, 2, 1)
+            -- Nempel tepat di belakang killer, 3 stud di atas dan 2 stud di belakang (mengikuti kemana pun killer pergi)
+            if root.Anchored then
+                root.Anchored = false
+            end
+            
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum and not hum.PlatformStand then
+                hum.PlatformStand = true
+            end
+            
+            root.CFrame = killerRoot.CFrame * CFrame.new(0, 3, 2)
         end
     end)
 end
@@ -1658,6 +1727,14 @@ CreateToggle(BypassCard, "Auto Follow Killer when Knocked", UDim2.new(0, 10, 0, 
     isAutoFollowKiller = state
     if isAutoFollowKiller then
         task.spawn(autoFollowKillerLoop)
+    else
+        pcall(function()
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.PlatformStand = false
+            end
+        end)
     end
 end)
 

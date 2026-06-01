@@ -307,90 +307,65 @@ local function getAttribute(player, name)
     return nil
 end
 
+-- Daftar Killer Terkonfirmasi (Case-Insensitive)
+local CONFIRMED_KILLERS = {
+    ["nightmare"] = true,
+    ["carnivore"] = true,
+    ["phantom"] = true,
+    ["tarantula"] = true
+}
+
 local function checkIfKiller(player)
     if not player then return false end
     if player == LocalPlayer then return false end
 
-    -- 0. Cek apakah ada ronde pertandingan yang sedang aktif
-    local roundActive = false
-    for _, p in ipairs(Players:GetPlayers()) do
-        if getAttribute(p, "Lives") ~= nil then
-            roundActive = true
-            break
-        end
+    -- 1. Cek apakah ada nyawa aktif (Lives). Jika ada, pasti Survivor ronde ini.
+    local hasLives = player:GetAttribute("Lives") ~= nil
+    if not hasLives and player.Character then
+        hasLives = player.Character:GetAttribute("Lives") ~= nil
     end
-
-    -- 1. Cek Lives (Pembeda Paling Akurat & Mutlak Saat Ronde Berjalan)
-    -- Jika player memiliki nyawa/Lives aktif, mereka PASTI Survivor ronde ini, abaikan semua atribut bocor dari ronde lalu!
-    local hasLives = getAttribute(player, "Lives") ~= nil
     if hasLives then
         return false
     end
 
-    -- 2. Cek Team (Sangat andal jika game menggunakan Team resmi)
-    local team = player.Team
-    if team then
-        local tName = team.Name:lower()
-        if tName:find("child") or tName:find("survivor") or tName:find("citizen") or 
-           tName:find("lobby") or tName:find("spectator") or tName:find("waiting") or 
-           tName:find("choosing") or tName:find("spectate") or tName:find("innocent") or 
-           tName:find("human") or tName:find("people") or tName:find("surv") then
-            return false
+    -- 2. Cek atribut player atau karakter
+    for _, attrName in ipairs({"SelectedMonster", "Monster", "MonsterType", "Role", "Killer"}) do
+        local val = player:GetAttribute(attrName)
+        if not val and player.Character then
+            val = player.Character:GetAttribute(attrName)
         end
-        if tName:find("killer") or tName:find("nightmare") or tName:find("monster") or 
-           tName:find("beast") or tName:find("slasher") or tName:find("hunter") or 
-           tName:find("carnivore") or tName:find("phantom") then
-            return true
-        end
-    end
-
-    -- 3. Cek SelectedMonster (Atribut Killer Ronde Aktif Paling Mutlak di Player & Character)
-    local sm = getAttribute(player, "SelectedMonster")
-    if sm ~= nil then
-        local s = tostring(sm):lower()
-        if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
-            return true
-        end
-    end
-
-    -- 3b. Cek Atribut Killer Ronde Aktif Lainnya
-    for _, attrName in ipairs({"Killer", "Nightmare", "IsNightmare", "IsKiller", "IsMonster", "Monster"}) do
-        local v = getAttribute(player, attrName)
-        if v ~= nil then
-            local s = tostring(v):lower()
-            if s ~= "" and s ~= "false" and s ~= "0" and s ~= "nil" and s ~= "none" then
+        if val then
+            local s = tostring(val):lower()
+            if CONFIRMED_KILLERS[s] then
                 return true
             end
         end
     end
 
-    -- 4. Cek Karakteristik Fisik (Lampu Merah Khas Killer) sebagai fallback akhir
+    -- 3. Cek Team resmi (jika game menggunakannya)
+    local team = player.Team
+    if team then
+        local tName = team.Name:lower()
+        if tName:find("killer") or tName:find("nightmare") or tName:find("monster") or 
+           tName:find("beast") or tName:find("slasher") or tName:find("hunter") then
+            return true
+        end
+    end
+
+    -- 4. Cek Nama Model Karakter di Workspace (jika di-rename oleh game)
     local char = player.Character
     if char then
-        -- Cek Revive/Rescue prompt (Hanya ada di survivor knocked, killer tidak pernah punya ini)
-        for _, obj in ipairs(char:GetDescendants()) do
-            if obj:IsA("ProximityPrompt") then
-                local act = obj.ActionText:lower()
-                local name = obj.Name:lower()
-                if act:find("revive") or act:find("rescue") or act:find("help") or name:find("revive") or name:find("rescue") then
-                    return false
-                end
-            elseif obj:IsA("BillboardGui") or obj:IsA("TextLabel") then
-                local txt = ""
-                pcall(function() txt = obj.Text:lower() end)
-                if txt:find("help") or txt:find("rescue") or txt:find("camping") or txt:find("revive") then
-                    return false
-                end
-            end
+        local charName = char.Name:lower()
+        if CONFIRMED_KILLERS[charName] then
+            return true
         end
-        
-        -- Cek apakah memiliki lampu merah (red light / vision cone) khas Killer (UGC-safe)
+
+        -- 5. Fallback Sensor Lampu Merah Fisik (antisipasi killer baru)
         if hasRedLightOrStain(char) then
             return true
         end
     end
 
-    -- Default ke Survivor (Hijau) untuk menghindari false-positive pada player biasa di lobby/spectator
     return false
 end
 
@@ -1915,97 +1890,27 @@ local function findKillerRoot()
         lastFollowDebugTime = os.clock()
     end
 
-    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    local myTeamName = LocalPlayer.Team and LocalPlayer.Team.Name:lower() or "nil"
-
-    -- DUMP DIAGNOSTIK: cetak semua player lengkap dengan tim, walkspeed, atribut (sekali tiap 3 detik)
-    if debugLog then
-        print("================ [AUTO-FOLLOW DIAGNOSTIK] ================")
-        print("LocalPlayer Team: " .. myTeamName)
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then
-                local team = p.Team and p.Team.Name or "NO-TEAM"
-                local charName = p.Character and p.Character.Name or "NO-CHAR"
-                local ws = "?"
-                local hp = "?"
-                if p.Character then
-                    local h = p.Character:FindFirstChildOfClass("Humanoid")
-                    if h then ws = tostring(h.WalkSpeed); hp = tostring(math.floor(h.Health)) end
-                end
-                -- Kumpulkan semua atribut player
-                local attrs = ""
-                pcall(function()
-                    for k, v in pairs(p:GetAttributes()) do
-                        attrs = attrs .. k .. "=" .. tostring(v) .. " "
-                    end
-                end)
-                print(string.format("  PLAYER: %s | Team=%s | Char=%s | WS=%s | HP=%s | Attrs:[%s]",
-                    p.Name, team, charName, ws, hp, attrs))
-            end
-        end
-        print("=========================================================")
-    end
-
-    -- ============================================================
-    -- METODE 1: Gunakan isPlayerKiller (deteksi terpadu yang sama dengan ESP)
-    -- Ini memastikan target follow = target merah di ESP (SelectedMonster)
-    -- ============================================================
+    -- METODE 1 & 2: Cari Player yang Terkonfirmasi sebagai Killer via isPlayerKiller
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character then
             local root = p.Character:FindFirstChild("HumanoidRootPart")
-            if root then
-                local isKiller = false
-                pcall(function() isKiller = isPlayerKiller(p) end)
-                if isKiller then
-                    if debugLog then print("[AUTO-FOLLOW] Killer ditemukan via SelectedMonster: " .. p.Name) end
-                    return root
-                end
-            end
-        end
-    end
-
-    -- ============================================================
-    -- METODE 2: Deteksi via WalkSpeed (killer biasanya lebih cepat dari survivor)
-    -- ============================================================
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local pHum = p.Character:FindFirstChildOfClass("Humanoid")
-            local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
-            if pHum and pRoot and pHum.WalkSpeed > 18 then
-                if debugLog then print("[AUTO-FOLLOW] Killer ditemukan via WalkSpeed (" .. pHum.WalkSpeed .. "): " .. p.Name) end
-                return pRoot
-            end
-        end
-    end
-
-    -- ============================================================
-    -- METODE 3: Deteksi via Red Light / Senjata di karakter player
-    -- ============================================================
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local root = p.Character:FindFirstChild("HumanoidRootPart")
-            if root and hasRedLightOrStain(p.Character) then
-                if debugLog then print("[AUTO-FOLLOW] Killer ditemukan via Red Light: " .. p.Name) end
+            if root and isPlayerKiller(p) then
+                if debugLog then print("[AUTO-FOLLOW] Killer ditemukan (Player): " .. p.Name) end
                 return root
             end
         end
     end
 
-    -- ============================================================
-    -- METODE 4: NPC/Bot Monster di Workspace
-    -- ============================================================
+    -- METODE 3: Cari Bot/NPC Monster di Workspace berdasarkan nama terkonfirmasi
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("Model") and obj ~= LocalPlayer.Character then
             local hum = obj:FindFirstChildOfClass("Humanoid")
             local root = obj:FindFirstChild("HumanoidRootPart")
             if hum and root and root:IsA("BasePart") and not root.Anchored then
-                local oName = obj.Name:lower()
-                -- Pastikan bukan player lain
                 if not Players:GetPlayerFromCharacter(obj) then
-                    if oName:find("nightmare") or oName:find("monster") or oName:find("carnivore") or
-                       oName:find("phantom") or oName:find("tarantula") or oName:find("spider") or
-                       oName:find("slasher") or oName:find("hunter") or hasRedLightOrStain(obj) then
-                        if debugLog then print("[AUTO-FOLLOW] Killer Bot ditemukan: " .. obj.Name) end
+                    local oName = obj.Name:lower()
+                    if CONFIRMED_KILLERS[oName] or hasRedLightOrStain(obj) then
+                        if debugLog then print("[AUTO-FOLLOW] Killer Bot ditemukan (NPC): " .. obj.Name) end
                         return root
                     end
                 end
@@ -2013,51 +1918,6 @@ local function findKillerRoot()
         end
     end
 
-    -- ============================================================
-    -- METODE 5 (FALLBACK): Player TERDEKAT yang BUKAN survivor terkonfirmasi
-    -- Skip siapa pun yang punya atribut Survivor berisi skin survivor biasa.
-    -- ============================================================
-    if myRoot then
-        local KILLER_SKINS2 = {
-            nightmare=true, phantom=true, spectre=true, tarantula=true,
-            spider=true, carnivore=true, azazil=true, slasher=true,
-            monster=true, hunter=true, chaser=true
-        }
-        local nearest = nil
-        local nearestDist = math.huge
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                local root = p.Character:FindFirstChild("HumanoidRootPart")
-                local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                if root and hum and hum.Health > 0 then
-                    -- Skip player yang TERKONFIRMASI survivor (punya skin survivor valid)
-                    local isConfirmedSurvivor = false
-                    local sv = p:GetAttribute("Survivor")
-                    if sv ~= nil then
-                        local s = tostring(sv):lower()
-                        if s ~= "" and not KILLER_SKINS2[s] then
-                            isConfirmedSurvivor = true
-                        end
-                    end
-                    if not isConfirmedSurvivor then
-                        local dist = (root.Position - myRoot.Position).Magnitude
-                        if dist < nearestDist then
-                            nearestDist = dist
-                            nearest = root
-                        end
-                    end
-                end
-            end
-        end
-        if nearest then
-            if debugLog then print("[AUTO-FOLLOW] Fallback: non-survivor terdekat (jarak " .. math.floor(nearestDist) .. ")") end
-            return nearest
-        end
-    end
-
-    if debugLog then
-        print("[AUTO-FOLLOW] Killer tidak ditemukan! Cek diagnostik di atas.")
-    end
     return nil
 end
 

@@ -2062,26 +2062,49 @@ local function autoFollowKillerLoop()
                                 local char = LocalPlayer.Character
                                 if not char then return end
 
-                                -- 1. Hancurkan paksa seluruh joint eksternal di client
-                                for _, child in ipairs(workspace:GetDescendants()) do
+                                -- 1. Hancurkan seluruh joint eksternal di client
+                                for _, part in ipairs(char:GetChildren()) do
+                                    if part:IsA("BasePart") then
+                                        pcall(function() part:BreakJoints() end)
+                                    end
+                                end
+                                
+                                for _, child in ipairs(char:GetDescendants()) do
                                     if child:IsA("JointInstance") or child:IsA("Weld") or child:IsA("Motor6D") or child:IsA("WeldConstraint") then
                                         local p0 = child.Part0
                                         local p1 = child.Part1
                                         if p0 and p1 then
-                                            if p0:IsDescendantOf(char) or p1:IsDescendantOf(char) then
-                                                if not (p0:IsDescendantOf(char) and p1:IsDescendantOf(char)) then
-                                                    pcall(function() child:Destroy() end)
-                                                end
+                                            if not (p0:IsDescendantOf(char) and p1:IsDescendantOf(char)) then
+                                                pcall(function() child:Destroy() end)
                                             end
                                         end
                                     end
                                 end
 
-                                -- 2. Trik Premium: Lepas parent karakter sementara ke nil untuk memutuskan joint di server secara permanen!
-                                local oldParent = char.Parent
-                                char.Parent = nil
-                                task.wait(0.1)
-                                char.Parent = oldParent
+                                -- 2. Trik Premium: Lepas parent parts karakter sementara ke nil untuk memutuskan joint di server secara permanen!
+                                local partsToReset = {}
+                                for _, part in ipairs(char:GetChildren()) do
+                                    if part:IsA("BasePart") then
+                                        table.insert(partsToReset, {
+                                            Part = part,
+                                            OriginalParent = char,
+                                            OriginalCFrame = part.CFrame
+                                        })
+                                    end
+                                end
+                                
+                                for _, data in ipairs(partsToReset) do
+                                    pcall(function() data.Part.Parent = nil end)
+                                end
+                                
+                                task.wait(0.08)
+                                
+                                for _, data in ipairs(partsToReset) do
+                                    pcall(function()
+                                        data.Part.Parent = data.OriginalParent
+                                        data.Part.CFrame = data.OriginalCFrame
+                                    end)
+                                end
 
                                 -- 3. Pulihkan kondisi fisik karakter
                                 local hum = char:FindFirstChildOfClass("Humanoid")
@@ -2090,20 +2113,39 @@ local function autoFollowKillerLoop()
                                     pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
                                 end
 
-                                local root = char:FindFirstChild("HumanoidRootPart")
-                                if root then
-                                    root.Anchored = false
-                                    -- Teleportasi instan 15 stud di belakang Killer setelah terlepas secara fisik
-                                    local killerRoot = findKillerRoot()
-                                    if killerRoot then
-                                        root.CFrame = killerRoot.CFrame * CFrame.new(0, 4, 15)
-                                    else
-                                        root.CFrame = root.CFrame * CFrame.new(0, 15, 0)
+                                -- 4. Teleportasi Kontinu Selama 1.5 Detik untuk menembus server-side rubberbanding!
+                                local startTime = os.clock()
+                                local teleportLoop
+                                teleportLoop = RunService.Heartbeat:Connect(function()
+                                    if not isAutoFollowKiller or os.clock() - startTime > 1.5 then
+                                        if teleportLoop then
+                                            teleportLoop:Disconnect()
+                                            teleportLoop = nil
+                                        end
+                                        return
                                     end
-                                end
+                                    
+                                    local root = char:FindFirstChild("HumanoidRootPart")
+                                    if root then
+                                        root.Anchored = false
+                                        pcall(function()
+                                            root.Velocity = Vector3.zero
+                                            root.RotVelocity = Vector3.zero
+                                            root.AssemblyLinearVelocity = Vector3.zero
+                                            root.AssemblyAngularVelocity = Vector3.zero
+                                        end)
+                                        
+                                        local killerRoot = findKillerRoot()
+                                        if killerRoot then
+                                            root.CFrame = killerRoot.CFrame * CFrame.new(0, 4, 15)
+                                        else
+                                            root.CFrame = root.CFrame * CFrame.new(0, 15, 0)
+                                        end
+                                    end
+                                end)
                             end)
                             
-                            notify("Auto Follow", "Slip Away! Terlepas & teleport 15 stud.", 3)
+                            notify("Auto Follow", "Slip Away! Terlepas & teleport kontinu.", 3)
                         end
                         
                         pcall(function() obj.MouseButton1Click:Connect(triggerSlipAway) end)

@@ -294,12 +294,33 @@ local function killerInfo(player)
     return false, "SelectedMonster=" .. smStr
 end
 
+local function getAttribute(player, name)
+    if not player then return nil end
+    local val = player:GetAttribute(name)
+    if val ~= nil then return val end
+    
+    local char = player.Character
+    if char then
+        val = char:GetAttribute(name)
+        if val ~= nil then return val end
+    end
+    return nil
+end
+
 local function checkIfKiller(player)
     if not player then return false end
     if player == LocalPlayer then return false end
 
+    -- 0. Cek apakah ada ronde pertandingan yang sedang aktif
+    local roundActive = false
+    for _, p in ipairs(Players:GetPlayers()) do
+        if getAttribute(p, "Lives") ~= nil then
+            roundActive = true
+            break
+        end
+    end
 
-    -- 0. Cek Team (Sangat andal jika game menggunakan Team resmi)
+    -- 0b. Cek Team (Sangat andal jika game menggunakan Team resmi)
     local team = player.Team
     if team then
         local tName = team.Name:lower()
@@ -316,8 +337,8 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 1. Cek SelectedMonster (Atribut Killer Ronde Aktif Paling Mutlak)
-    local sm = player:GetAttribute("SelectedMonster")
+    -- 1. Cek SelectedMonster (Atribut Killer Ronde Aktif Paling Mutlak di Player & Character)
+    local sm = getAttribute(player, "SelectedMonster")
     if sm ~= nil then
         local s = tostring(sm):lower()
         if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
@@ -327,7 +348,7 @@ local function checkIfKiller(player)
 
     -- 1b. Cek Atribut Killer Ronde Aktif Lainnya
     for _, attrName in ipairs({"Killer", "Nightmare", "IsNightmare", "IsKiller", "IsMonster", "Monster"}) do
-        local v = player:GetAttribute(attrName)
+        local v = getAttribute(player, attrName)
         if v ~= nil then
             local s = tostring(v):lower()
             if s ~= "" and s ~= "false" and s ~= "0" and s ~= "nil" and s ~= "none" then
@@ -338,7 +359,7 @@ local function checkIfKiller(player)
 
     -- 1c. Cek Atribut khusus Survivor (Jika ada, langsung pastikan Survivor)
     for _, survAttr in ipairs({"Survivor", "IsSurvivor", "Human", "Innocent", "SurvivorSkin", "Citizen"}) do
-        local v = player:GetAttribute(survAttr)
+        local v = getAttribute(player, survAttr)
         if v ~= nil then
             local s = tostring(v):lower()
             if s ~= "" and s ~= "false" and s ~= "nil" and s ~= "none" and s ~= "0" then
@@ -348,36 +369,37 @@ local function checkIfKiller(player)
     end
 
     -- 2. Cek Lives (Pembeda Paling Akurat di Arena Pertandingan!)
-    -- Di arena pertandingan aktif, semua Survivor SELALU memiliki atribut "Lives" (3, 2, 1, atau 0).
-    -- Sedangkan Killer AKTIF tidak pernah memiliki atribut "Lives" (nil).
-    local hasLives = player:GetAttribute("Lives") ~= nil
+    local hasLives = getAttribute(player, "Lives") ~= nil
     if hasLives then
         return false
     end
 
-    -- 3. Cek Karakteristik Fisik & Prompt (Knocked State)
-    local char = player.Character
-    if char then
-        -- Cek Revive/Rescue prompt (Hanya ada di survivor knocked, killer tidak pernah punya ini)
-        for _, obj in ipairs(char:GetDescendants()) do
-            if obj:IsA("ProximityPrompt") then
-                local act = obj.ActionText:lower()
-                local name = obj.Name:lower()
-                if act:find("revive") or act:find("rescue") or act:find("help") or name:find("revive") or name:find("rescue") then
-                    return false
-                end
-            elseif obj:IsA("BillboardGui") or obj:IsA("TextLabel") then
-                local txt = ""
-                pcall(function() txt = obj.Text:lower() end)
-                if txt:find("help") or txt:find("rescue") or txt:find("camping") or txt:find("revive") then
-                    return false
+    -- 3. Cek Karakteristik Fisik (Hanya dipercayai saat ronde aktif berjalan)
+    -- Ini mencegah aksesoris UGC merah/glowing milik survivor di lobby disalahartikan sebagai Killer!
+    if roundActive then
+        local char = player.Character
+        if char then
+            -- Cek Revive/Rescue prompt (Hanya ada di survivor knocked, killer tidak pernah punya ini)
+            for _, obj in ipairs(char:GetDescendants()) do
+                if obj:IsA("ProximityPrompt") then
+                    local act = obj.ActionText:lower()
+                    local name = obj.Name:lower()
+                    if act:find("revive") or act:find("rescue") or act:find("help") or name:find("revive") or name:find("rescue") then
+                        return false
+                    end
+                elseif obj:IsA("BillboardGui") or obj:IsA("TextLabel") then
+                    local txt = ""
+                    pcall(function() txt = obj.Text:lower() end)
+                    if txt:find("help") or txt:find("rescue") or txt:find("camping") or txt:find("revive") then
+                        return false
+                    end
                 end
             end
-        end
-        
-        -- Cek apakah memiliki lampu merah (red light / vision cone) khas Killer (UGC-safe)
-        if hasRedLightOrStain(char) then
-            return true
+            
+            -- Cek apakah memiliki lampu merah (red light / vision cone) khas Killer (UGC-safe)
+            if hasRedLightOrStain(char) then
+                return true
+            end
         end
     end
 

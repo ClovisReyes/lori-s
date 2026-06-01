@@ -43,13 +43,23 @@ local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 
--- Target Parent (CoreGui untuk Executor agar aman, PlayerGui untuk Roblox Studio)
+-- Target Parent (CoreGui jika didukung write access oleh executor, PlayerGui sebagai fallback solid)
 local TargetParent = nil
-local success = pcall(function()
+local coreGuiSuccess = pcall(function()
+    local testGui = Instance.new("ScreenGui")
+    testGui.Parent = CoreGui
+    testGui:Destroy()
     TargetParent = CoreGui
 end)
-if not success or not TargetParent then
-    TargetParent = LocalPlayer:WaitForChild("PlayerGui")
+
+if not coreGuiSuccess or not TargetParent then
+    pcall(function()
+        TargetParent = LocalPlayer:WaitForChild("PlayerGui", 5) or LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    end)
+end
+
+if not TargetParent then
+    TargetParent = CoreGui
 end
 
 -- Bersihkan menu & panel lama jika ada
@@ -271,7 +281,22 @@ local function checkIfKiller(player)
     if not player then return false end
     if player == LocalPlayer then return false end
 
-    -- 1. Cek Tim Roblox (Sumber kebenaran paling mutlak!)
+    -- 0. Cek Lives (Survivor pasti punya ini di arena pertandingan aktif, Killer tidak pernah punya)
+    local hasLives = player:GetAttribute("Lives") ~= nil
+    if hasLives then
+        return false
+    end
+
+    -- 1. Cek SelectedMonster dan Lives (Sangat akurat di arena)
+    local sm = player:GetAttribute("SelectedMonster")
+    if sm ~= nil then
+        local s = tostring(sm):lower()
+        if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
+            return true
+        end
+    end
+
+    -- 2. Cek Tim Roblox (Sumber kebenaran paling mutlak!)
     if player.Team then
         local tName = player.Team.Name:lower()
         if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("lobby") or tName:find("spectator") or tName:find("waiting") or tName:find("choosing") then
@@ -282,7 +307,18 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 2. Cek karakteristik fisik karakter (Senjata, Lampu Merah, Model Nama)
+    -- 3. Cek Atribut Killer Ronde Aktif
+    for _, attrName in ipairs({"Killer", "Nightmare", "IsNightmare", "IsKiller", "IsMonster", "Monster"}) do
+        local v = player:GetAttribute(attrName)
+        if v ~= nil then
+            local s = tostring(v):lower()
+            if s ~= "" and s ~= "false" and s ~= "0" and s ~= "nil" and s ~= "none" then
+                return true
+            end
+        end
+    end
+
+    -- 4. Cek karakteristik fisik karakter (Senjata, Lampu Merah, Model Nama)
     local char = player.Character
     if char then
         -- Cek Revive prompt (Hanya ada di survivor knocked, killer tidak pernah punya ini)
@@ -302,12 +338,15 @@ local function checkIfKiller(player)
             end
         end
 
-        -- Cek senjata killer (Mendukung BasePart & Model kustom, bukan cuma Tool/Weapon instance)
+        -- Cek senjata killer (Mendukung BasePart & Model kustom, skip cosmetic accessories)
         for _, child in ipairs(char:GetDescendants()) do
             if child:IsA("BasePart") or child:IsA("Model") then
                 local tName = child.Name:lower()
-                if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") or tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or tName:find("sickle") then
-                    return true
+                local isAccessory = child:FindFirstAncestorOfClass("Accessory") ~= nil
+                if not isAccessory then
+                    if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") or tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or tName:find("sickle") then
+                        return true
+                    end
                 end
             end
         end
@@ -320,28 +359,6 @@ local function checkIfKiller(player)
         -- Cek model nama monster
         local cName = char.Name:lower()
         if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("slasher") or cName:find("chaser") or cName:find("hunter") or cName:find("spectre") or cName:find("azazil") or cName:find("spider") then
-            return true
-        end
-    end
-
-    -- 3. Cek Atribut Killer Ronde Aktif
-    for _, attrName in ipairs({"Killer", "Nightmare", "IsNightmare", "IsKiller", "IsMonster", "Monster"}) do
-        local v = player:GetAttribute(attrName)
-        if v ~= nil then
-            local s = tostring(v):lower()
-            if s ~= "" and s ~= "false" and s ~= "0" and s ~= "nil" and s ~= "none" then
-                return true
-            end
-        end
-    end
-
-    -- 4. Fallback SelectedMonster (Mencegah false-positive survivor lobi)
-    -- Di arena pertandingan aktif, Survivor SELALU memiliki nyawa (Lives >= 1), sedangkan Killer tidak punya Lives!
-    local hasLives = player:GetAttribute("Lives") ~= nil
-    local sm = player:GetAttribute("SelectedMonster")
-    if sm ~= nil and not hasLives then
-        local s = tostring(sm):lower()
-        if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
             return true
         end
     end
@@ -459,7 +476,9 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 print("[DEBUG] ScreenGui dibuat, parent:", TargetParent)
 ScreenGui.Parent = TargetParent
-print("[DEBUG] ScreenGui di-parent ke:", TargetParent.Name)
+local parentName = "Unknown"
+pcall(function() parentName = TargetParent.Name end)
+print("[DEBUG] ScreenGui di-parent ke:", parentName)
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
@@ -2270,6 +2289,8 @@ end)
 
 print("[LORI'S ULTIMATE HUB] Berhasil di-inject! Nikmati automasi premium.")
 print("[DEBUG] GUI seharusnya sudah muncul. Cek F9 console untuk detail.")
-print("[DEBUG] ScreenGui.Parent:", ScreenGui.Parent)
+local screenGuiParentStr = "nil"
+pcall(function() screenGuiParentStr = tostring(ScreenGui.Parent) end)
+print("[DEBUG] ScreenGui.Parent:", screenGuiParentStr)
 print("[DEBUG] MainFrame.Visible:", MainFrame.Visible)
 print("[DEBUG] MainFrame.Size:", MainFrame.Size)

@@ -257,15 +257,16 @@ local function hasRedLightOrStain(model)
     for _, child in ipairs(model:GetDescendants()) do
         if child:IsA("Light") then
             local color = child.Color
-            if color.R > 0.8 and color.G < 0.2 and color.B < 0.2 then
+            if color.R > 0.85 and color.G < 0.15 and color.B < 0.15 then
                 return true
             end
         elseif child:IsA("BasePart") then
             local name = child.Name:lower()
-            -- Hanya cocokkan part lampu/stain spesifik milik Killer, bukan aksesoris merah biasa
-            if name == "redstain" or name == "stain" or name == "visioncone" or name == "redlight" or name == "lookangle" or name:find("stain") then
+            -- Hanya cocokkan nama part eksklusif milik Killer (redstain, visioncone, redlight, lookangle).
+            -- Hindari name:find("stain") karena rentan mencocokkan aksesoris bermotif survivor.
+            if name == "redstain" or name == "visioncone" or name == "redlight" or name == "lookangle" then
                 local color = child.Color
-                if color.R > 0.8 and color.G < 0.2 and color.B < 0.2 then
+                if color.R > 0.85 and color.G < 0.15 and color.B < 0.15 then
                     return true
                 end
             end
@@ -2512,4 +2513,3 @@ pcall(function() screenGuiParentStr = tostring(ScreenGui.Parent) end)
 print("[DEBUG] ScreenGui.Parent:", screenGuiParentStr)
 print("[DEBUG] MainFrame.Visible:", MainFrame.Visible)
 print("[DEBUG] MainFrame.Size:", MainFrame.Size)
-

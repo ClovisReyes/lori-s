@@ -1481,40 +1481,7 @@ local function espUpdateLoop()
 
                         -- Tentukan warna: MERAH untuk killer, HIJAU untuk survivor
                         local isKiller = false
-                        
-                        -- Pengecekan pre-match / lobby: jika local player di tim lobby/spectator, paksa hijau kecuali SelectedMonster valid
-                        local isLobbyMode = false
-                        local myTeam = LocalPlayer.Team
-                        if myTeam then
-                            local mtName = myTeam.Name:lower()
-                            if mtName:find("lobby") or mtName:find("spectat") or mtName:find("waiting") or mtName:find("choosing") then
-                                isLobbyMode = true
-                            end
-                        end
-                        
-                        -- Cek apakah ronde sedang aktif secara global
-                        local isRoundRunning = false
-                        for _, p in ipairs(Players:GetPlayers()) do
-                            if p:GetAttribute("Lives") ~= nil then
-                                isRoundRunning = true
-                                break
-                            end
-                        end
-                        
-                        if not isRoundRunning or isLobbyMode then
-                            -- Di lobby / spectator mode: hanya Kugisaki (atau killer terpilih baru) yang boleh merah.
-                            -- Sisanya dipaksa HIJAU.
-                            local sm = getAttribute(player, "SelectedMonster")
-                            if sm ~= nil then
-                                local s = tostring(sm):lower()
-                                if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
-                                    isKiller = true
-                                end
-                            end
-                        else
-                            -- Di dalam match aktif: gunakan deteksi checkIfKiller standar
-                            pcall(function() isKiller = isPlayerKiller(player) end)
-                        end
+                        pcall(function() isKiller = isPlayerKiller(player) end)
 
                         if isKiller then
                             hl.FillColor = Theme.Red

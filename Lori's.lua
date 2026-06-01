@@ -267,18 +267,25 @@ local function killerInfo(player)
     return false, "SelectedMonster=" .. smStr
 end
 
-local function isPlayerKiller(player)
+local function checkIfKiller(player)
     if not player then return false end
     if player == LocalPlayer then return false end
 
-    -- 1. Jika punya atribut Survivor atau Lives, dia pasti Survivor (Bukan Killer)
-    if player:GetAttribute("Survivor") ~= nil or player:GetAttribute("Lives") ~= nil or player:GetAttribute("MaxLives") ~= nil or player:GetAttribute("Strikes") ~= nil then
-        return false
+    -- 1. Cek Tim Roblox (Sumber kebenaran paling mutlak!)
+    if player.Team then
+        local tName = player.Team.Name:lower()
+        if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("lobby") or tName:find("spectator") or tName:find("waiting") or tName:find("choosing") then
+            return false
+        end
+        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("chaser") or tName:find("hunter") then
+            return true
+        end
     end
 
-    -- 2. Jika karakternya memiliki ProximityPrompt atau billboard untuk Revive/Help/Camping, dia pasti Survivor
+    -- 2. Cek karakteristik fisik karakter (Senjata, Lampu Merah, Model Nama)
     local char = player.Character
     if char then
+        -- Cek Revive prompt (Hanya ada di survivor knocked, killer tidak pernah punya ini)
         for _, obj in ipairs(char:GetDescendants()) do
             if obj:IsA("ProximityPrompt") then
                 local act = obj.ActionText:lower()
@@ -294,65 +301,30 @@ local function isPlayerKiller(player)
                 end
             end
         end
-    end
 
-    -- 3. Deteksi Positif: Jika memiliki SelectedMonster (dan lolos cek survivor di atas), dia adalah killer
-    local sm = player:GetAttribute("SelectedMonster")
-    if sm ~= nil then
-        local s = tostring(sm):lower()
-        if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
-            return true
-        end
-    end
-
-    -- 4. Deteksi Positif: Cek jika dia membawa senjata tajam/killer weapon
-    if char then
+        -- Cek senjata killer
         for _, child in ipairs(char:GetDescendants()) do
             if child:IsA("Tool") or child:IsA("Weapon") then
                 local tName = child.Name:lower()
-                if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") then
+                if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") then
                     return true
                 end
             end
         end
-        -- Cek jika punya lampu merah / red stain
+
+        -- Cek lampu merah / red stain
         if hasRedLightOrStain(char) then
             return true
         end
-    end
 
-    return false
-end
-
-local function checkIfKiller(player)
-    if not player then return false end
-
-    -- Pakai deteksi global terlebih dahulu
-    if isPlayerKiller(player) then return true end
-
-    -- ============================================================
-    -- DETEKSI SPESIFIK LORI'S NIGHTMARE (berdasarkan atribut game asli)
-    -- Data nyata: game TIDAK pakai Roblox Teams. Setiap survivor punya
-    -- atribut "Survivor" = nama skin (Dani, Bacon, Pincat, dll).
-    -- Killer (Nightmare) memakai skin killer / atribut killer khusus.
-    -- ============================================================
-    local KILLER_SKINS = {
-        nightmare=true, phantom=true, spectre=true, tarantula=true,
-        spider=true, carnivore=true, azazil=true, slasher=true,
-        monster=true, hunter=true, chaser=true
-    }
-
-    -- (a) SINYAL UTAMA: atribut "SelectedMonster" hanya dimiliki KILLER aktif!
-    --     (data asli: hanya 1 player punya SelectedMonster=Nightmare = si killer)
-    local selMon = player:GetAttribute("SelectedMonster")
-    if selMon ~= nil then
-        local s = tostring(selMon):lower()
-        if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
+        -- Cek model nama monster
+        local cName = char.Name:lower()
+        if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("slasher") or cName:find("chaser") or cName:find("hunter") or cName:find("spectre") or cName:find("azazil") or cName:find("spider") then
             return true
         end
     end
 
-    -- (b) Atribut killer eksplisit lainnya
+    -- 3. Cek Atribut Killer Ronde Aktif
     for _, attrName in ipairs({"Killer", "Nightmare", "IsNightmare", "IsKiller", "IsMonster", "Monster"}) do
         local v = player:GetAttribute(attrName)
         if v ~= nil then
@@ -363,94 +335,42 @@ local function checkIfKiller(player)
         end
     end
 
-    -- (c) CATATAN: atribut "Survivor" TIDAK dipakai sebagai penentu,
-    --     karena KILLER pun punya atribut Survivor (skin cosmetic).
-    --     WalkSpeed juga TIDAK dipakai (killer & survivor sama-sama 15).
-
-    -- ============================================================
-    -- (Fallback lama di bawah ini tetap dipertahankan)
-    -- ============================================================
-    
-    -- 1. PRIORITAS UTAMA: Cek Tim Roblox
-    -- Di Lori's Nightmare: Tim Survivor = "Children", Tim Killer = "Nightmare"
-    if player.Team then
-        local tName = player.Team.Name:lower()
-        
-        -- Jika nama tim jelas survivor → pasti Hijau
-        if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("innocent") or tName:find("lobby") or tName:find("spectator") or tName:find("waiting") or tName:find("choosing") then
-            return false
-        end
-        
-        -- Jika nama tim jelas killer → pasti Merah
-        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("chaser") or tName:find("hunter") then
-            return true
-        end
-        
-        -- Tim ada tapi namanya ambigu: bandingkan dengan tim local player
-        -- Jika local player di tim "Children" dan player ini di tim yang BERBEDA → dia killer
-        if LocalPlayer.Team then
-            local lpTeam = LocalPlayer.Team.Name:lower()
-            local pTeam = tName
-            
-            if (lpTeam:find("child") or lpTeam:find("survivor")) then
-                -- Local player adalah survivor. Jika player lain di tim yang beda → killer
-                if lpTeam ~= pTeam and not pTeam:find("lobby") and not pTeam:find("spectator") and not pTeam:find("waiting") and not pTeam:find("choosing") then
-                    return true
-                end
-            end
-        end
-        
-        -- Punya tim tapi tidak cocok pola apapun → anggap survivor (aman)
-        return false
-    end
-    
-    -- 2. TIDAK ADA TIM: Cek Atribut Role langsung (konservatif)
-    local char = player.Character
-    for _, obj in ipairs({player, char}) do
-        if obj then
-            for _, attr in ipairs({"Role", "IsKiller", "IsNightmare", "Team", "Slasher"}) do
-                local val = obj:GetAttribute(attr)
-                if val then
-                    local s = tostring(val):lower()
-                    -- Hanya return true jika nama atributnya spesifik dan jelas
-                    if attr == "IsKiller" or attr == "IsNightmare" or attr == "Slasher" then
-                        if val == true then return true end
-                    elseif s == "nightmare" or s == "killer" or s == "monster" or s == "slasher" or s == "chaser" or s == "hunter" then
-                        return true
-                    elseif s == "child" or s == "survivor" or s == "children" then
-                        return false
+    -- 4. Fallback SelectedMonster (Hanya jika bukan survivor terbukti)
+    local sm = player:GetAttribute("SelectedMonster")
+    if sm ~= nil then
+        local s = tostring(sm):lower()
+        if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
+            -- Mencegah false-positive survivor lobi:
+            -- Di game ini, Killer aktif SELALU membawa senjata atau memancarkan red light / red stain di karakternya.
+            -- Jika player ini memiliki SelectedMonster lobi tapi tidak memancarkan tanda killer fisik sama sekali,
+            -- kita anggap dia survivor (kecuali dia di Tim Killer).
+            if char then
+                local hasKillerTraits = hasRedLightOrStain(char)
+                if not hasKillerTraits then
+                    -- Cari apakah ada senjata
+                    for _, child in ipairs(char:GetDescendants()) do
+                        if child:IsA("Tool") or child:IsA("Weapon") then
+                            local tName = child.Name:lower()
+                            if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") then
+                                hasKillerTraits = true
+                                break
+                            end
+                        end
                     end
                 end
-            end
-        end
-    end
-    
-    -- 3. Cek Karakter (Nama Model, Senjata, Red Light)
-    if char then
-        local cName = char.Name:lower()
-        -- Hanya match nama monster yang sudah dikonfirmasi dari game ini
-        if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("slasher") or cName:find("chaser") or cName:find("hunter") or cName:find("killer") or cName:find("monster") then
-            return true
-        end
-        
-        -- Cek jika membawa senjata/claws
-        for _, child in ipairs(char:GetDescendants()) do
-            if child:IsA("Tool") or child:IsA("Weapon") then
-                local tName = child.Name:lower()
-                if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") then
-                    return true
+                if not hasKillerTraits then
+                    return false -- Dia survivor lobi yang sedang bermain sebagai survivor
                 end
             end
-        end
-        
-        -- Cek Red Light / Stain
-        if hasRedLightOrStain(char) then
             return true
         end
     end
-    
-    -- 4. DEFAULT: Anggap Survivor (Hijau) jika tidak ada bukti kuat dia adalah killer
+
     return false
+end
+
+local function isPlayerKiller(player)
+    return checkIfKiller(player)
 end
 
 

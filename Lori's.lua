@@ -1458,9 +1458,10 @@ local function applyPlayerESP(player)
     if player == LocalPlayer then return end
 end
 
--- Loop yang terus update warna highlight tiap player sesuai role killer/survivor
+-- Loop yang terus update warna highlight tiap player sesuai role killer/survivor (serta deteksi bot killer di workspace)
 local function espUpdateLoop()
     while espPlayersActive do
+        -- 1. Pindai Player Asli (Human)
         for _, player in ipairs(Players:GetPlayers()) do
             if player ~= LocalPlayer and player.Character then
                 local char = player.Character
@@ -1476,7 +1477,6 @@ local function espUpdateLoop()
                         hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                         pcall(function() hl.Parent = root end)
                     end
-                    -- Pastikan adornee selalu benar (karakter bisa respawn)
                     if hl.Adornee ~= char then hl.Adornee = char end
 
                     -- Tentukan warna: MERAH untuk killer, HIJAU untuk survivor
@@ -1492,6 +1492,42 @@ local function espUpdateLoop()
                 end
             end
         end
+
+        -- 2. Pindai Bot/NPC Killer di Workspace (Dioptimalkan menggunakan GetChildren)
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+                local hum = obj:FindFirstChildOfClass("Humanoid")
+                local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")
+                
+                if hum and root and not Players:GetPlayerFromCharacter(obj) then
+                    local oName = obj.Name:lower()
+                    local isBotKiller = false
+                    
+                    if oName:find("nightmare") or oName:find("monster") or oName:find("carnivore") or
+                       oName:find("phantom") or oName:find("tarantula") or oName:find("spider") or
+                       oName:find("slasher") or oName:find("hunter") or hasRedLightOrStain(obj) then
+                        isBotKiller = true
+                    end
+                    
+                    if isBotKiller then
+                        local hl = root:FindFirstChild("ESPHighlight")
+                        if not hl then
+                            hl = Instance.new("Highlight")
+                            hl.Name = "ESPHighlight"
+                            hl.Adornee = obj
+                            hl.FillTransparency = 0.4
+                            hl.OutlineTransparency = 0.1
+                            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                            pcall(function() hl.Parent = root end)
+                        end
+                        if hl.Adornee ~= obj then hl.Adornee = obj end
+                        hl.FillColor = Theme.Red
+                        hl.OutlineColor = Color3.fromRGB(255, 120, 120)
+                    end
+                end
+            end
+        end
+
         task.wait(0.5)
     end
 end
@@ -1512,9 +1548,19 @@ local function togglePlayerESP(state)
         end
         playerEspConns = {}
         
+        -- Hapus ESP dari Player Asli
         for _, p in ipairs(Players:GetPlayers()) do
             if p.Character then
                 local root = p.Character:FindFirstChild("HumanoidRootPart")
+                local hl = root and root:FindFirstChild("ESPHighlight")
+                if hl then hl:Destroy() end
+            end
+        end
+
+        -- Hapus ESP dari Bot/NPC Killer di Workspace
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj:IsA("Model") then
+                local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")
                 local hl = root and root:FindFirstChild("ESPHighlight")
                 if hl then hl:Destroy() end
             end

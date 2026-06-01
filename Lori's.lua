@@ -322,60 +322,36 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 2. Cek Tim Roblox (Sumber kebenaran paling mutlak!)
-    -- Diletakkan di atas sebelum cek Lives agar tidak terlewat jika Lives di-replicate salah
-    if player.Team then
-        local tName = player.Team.Name:lower()
-        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("chaser") or tName:find("hunter") then
-            return true
-        end
-    end
-
-    -- 3. Cek Karakteristik Fisik Mutlak (Red Light, Model Monster Kustom, Senjata)
-    local char = player.Character
-    if char then
-        -- Cek lampu merah / red stain (Hanya dimiliki Killer aktif!)
-        if hasRedLightOrStain(char) then
-            return true
-        end
-
-        -- Cek descendants karakter untuk model/part/folder/decal bertema monster/killer
-        for _, child in ipairs(char:GetDescendants()) do
-            if child:IsA("Model") or child:IsA("BasePart") or child:IsA("Folder") or child:IsA("Decal") or child:IsA("Texture") then
-                local cName = child.Name:lower()
-                if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("slasher") or cName:find("chaser") or cName:find("hunter") or cName:find("spectre") or cName:find("azazil") or cName:find("spider") or cName:find("monster") or
-                   cName:find("smile") or cName:find("smiling") or cName:find("grin") or cName:find("happy") or cName:find("creepy") then
-                    return true
-                end
-            end
-        end
-
-        -- Cek senjata killer (Mendukung BasePart & Model kustom, menyaring aksesoris kosmetik survivor)
-        for _, child in ipairs(char:GetDescendants()) do
-            if child:IsA("BasePart") or child:IsA("Model") then
-                local tName = child.Name:lower()
-                local isAccessory = child:FindFirstAncestorWhichIsA("Accessory") ~= nil
-                if not isAccessory then
-                    if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") or tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or tName:find("sickle") then
-                        return true
-                    end
-                end
-            end
-        end
-    end
-
-    -- 4. Cek Lives (Jika tidak terbukti Killer secara fisik/tim, survivor aktif pasti memiliki Lives)
+    -- 2. Cek Lives (Pembeda Paling Akurat di Arena Pertandingan!)
+    -- Di arena pertandingan aktif, semua Survivor SELALU memiliki atribut "Lives" (3, 2, 1, atau 0).
+    -- Sedangkan Killer AKTIF tidak pernah memiliki atribut "Lives" (nil).
     local hasLives = player:GetAttribute("Lives") ~= nil
     if hasLives then
         return false
     end
 
-    -- 5. Jika berada di tim Survivor yang terkonfirmasi
-    if player.Team then
-        local tName = player.Team.Name:lower()
-        if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("lobby") or tName:find("spectator") or tName:find("waiting") or tName:find("choosing") then
-            return false
+    -- 3. Cek Karakteristik Fisik & Prompt
+    -- Jika tidak memiliki Lives, dan tidak memiliki prompt penyelamatan, mereka adalah Killer aktif!
+    local char = player.Character
+    if char then
+        -- Cek Revive/Rescue prompt (Hanya ada di survivor knocked, killer tidak pernah punya ini)
+        for _, obj in ipairs(char:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") then
+                local act = obj.ActionText:lower()
+                local name = obj.Name:lower()
+                if act:find("revive") or act:find("rescue") or act:find("help") or name:find("revive") or name:find("rescue") then
+                    return false
+                end
+            elseif obj:IsA("BillboardGui") or obj:IsA("TextLabel") then
+                local txt = ""
+                pcall(function() txt = obj.Text:lower() end)
+                if txt:find("help") or txt:find("rescue") or txt:find("camping") or txt:find("revive") then
+                    return false
+                end
+            end
         end
+        
+        return true
     end
 
     return false

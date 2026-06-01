@@ -2015,17 +2015,23 @@ local function autoFollowKillerLoop()
 
             local killerRoot = findKillerRoot()
             if killerRoot then
-                if root.Anchored then
-                    root.Anchored = false
-                end
+                local dist = (root.Position - killerRoot.Position).Magnitude
                 
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum and not hum.PlatformStand then
-                    hum.PlatformStand = true
+                -- Hanya berteleportasi jika jarak ke killer > 6 stud.
+                -- Jika sudah dekat (<= 6 stud), biarkan menempel secara natural atau terbawa carry weld game tanpa glitch!
+                if dist > 6 then
+                    if root.Anchored then
+                        root.Anchored = false
+                    end
+                    
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum and not hum.PlatformStand then
+                        hum.PlatformStand = true
+                    end
+                    
+                    -- Teleport ke atas killer (3 stud ke atas, 2 stud di belakang)
+                    root.CFrame = killerRoot.CFrame * CFrame.new(0, 3, 2)
                 end
-                
-                -- Teleport ke atas killer (3 stud ke atas, 2 stud di belakang) dan nempel terus (Heartbeat)
-                root.CFrame = killerRoot.CFrame * CFrame.new(0, 3, 2)
             end
         end
     end)

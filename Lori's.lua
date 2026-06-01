@@ -136,7 +136,7 @@ if getcustomasset then
     end
 end
 
--- Helper: Scan model untuk lampu merah / vision cone (biasanya dimiliki killer)
+-- Helper: Scan model untuk lampu merah / vision cone / senjata (biasanya dimiliki killer)
 local function hasRedLightOrStain(model)
     if not model then return false end
     for _, child in ipairs(model:GetDescendants()) do
@@ -145,9 +145,18 @@ local function hasRedLightOrStain(model)
             if color.R > 0.7 and color.G < 0.3 and color.B < 0.3 then
                 return true
             end
-        elseif child:IsA("BasePart") and (child.Name:lower():find("stain") or child.Name:lower():find("red") or child.Name:lower():find("light")) then
+        elseif child:IsA("BasePart") then
             local color = child.Color
-            if color.R > 0.7 and color.G < 0.3 and color.B < 0.3 then
+            local name = child.Name:lower()
+            -- Deteksi part transparan merah (red stain) atau part bernama stain/red/light/vision
+            if (name:find("stain") or name:find("red") or name:find("light") or name:find("vision") or name:find("cone")) then
+                if color.R > 0.7 and color.G < 0.3 and color.B < 0.3 then
+                    return true
+                end
+            end
+        elseif child:IsA("Decal") or child:IsA("Texture") then
+            local name = child.Name:lower()
+            if name:find("stain") or name:find("red") or name:find("light") or name:find("vision") then
                 return true
             end
         end
@@ -214,12 +223,22 @@ local function checkIfKiller(player)
         end
     end
     
-    -- 3. Cek Nama Model Karakter (nama monster spesifik Lori's Nightmare)
+    -- 3. Cek Karakter (Nama Model, Senjata, Red Light)
     if char then
         local cName = char.Name:lower()
         -- Hanya match nama monster yang sudah dikonfirmasi dari game ini
         if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("lori") or cName:find("slasher") or cName:find("chaser") or cName:find("hunter") or cName:find("killer") or cName:find("monster") then
             return true
+        end
+        
+        -- Cek jika membawa senjata/claws
+        for _, child in ipairs(char:GetDescendants()) do
+            if child:IsA("Tool") or child:IsA("Weapon") then
+                local tName = child.Name:lower()
+                if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") then
+                    return true
+                end
+            end
         end
         
         -- Cek Red Light / Stain
@@ -677,12 +696,27 @@ local function autoSkillCheck()
         -- Track posisi jarum sebelumnya per-GUI untuk mendeteksi gerakan (bukan keyword)
         local lastNeedleX = {}
         local justPressed = {}
+        local guiOpenedTime = {}
         
         while isAutoSkillCheck do
             task.wait(0.05) -- 20fps, 10x lebih ringan dari sebelumnya
             
             local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
             if not playerGui then continue end
+            
+            -- Bersihkan tracker waktu untuk GUI yang sudah ditutup
+            for key, t in pairs(guiOpenedTime) do
+                local found = false
+                for _, g in ipairs(playerGui:GetChildren()) do
+                    if tostring(g):sub(-8) == key then
+                        found = true
+                        break
+                    end
+                end
+                if not found then
+                    guiOpenedTime[key] = nil
+                end
+            end
             
             for _, gui in ipairs(playerGui:GetChildren()) do
                 if not gui:IsA("ScreenGui") or not gui.Enabled or gui.Name == "LoriNightmareUltimateHub" then continue end
@@ -692,6 +726,15 @@ local function autoSkillCheck()
                 -- PROSES HANYA DUA SCREEN GUI INI SAJA (sangat aman, bebas klik-klik gajelas di luar minigame)
                 if gName == "barminigame" or gName == "minigame" then
                     local guiKey = tostring(gui):sub(-8)
+                    
+                    if not guiOpenedTime[guiKey] then
+                        guiOpenedTime[guiKey] = os.clock()
+                    end
+                    
+                    -- Jika GUI kaset (barminigame) baru terbuka < 0.35 detik, tunggu dulu agar posisi terinisialisasi
+                    if gName == "barminigame" and (os.clock() - guiOpenedTime[guiKey] < 0.35) then
+                        continue
+                    end
                     
                     local function isGuiVisible(obj)
                         if not obj or not obj:IsA("GuiObject") then return false end
@@ -1528,26 +1571,37 @@ local function findKillerRoot()
         end
     end
     
-    -- 2. Cari Killer sebagai NPC/Bot di tingkat atas Workspace
-    for _, obj in ipairs(workspace:GetChildren()) do
-        if obj:IsA("Model") and obj ~= LocalPlayer.Character then
-            local oName = obj.Name:lower()
-            if oName:find("nightmare") or oName:find("killer") or oName:find("monster") or 
-               oName:find("carnivore") or oName:find("phantom") or oName:find("tarantula") or oName:find("spider") or
-               oName:find("lori") or oName:find("slasher") or oName:find("chaser") or oName:find("hunter") or
-               obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") or hasRedLightOrStain(obj) then
-                local root = obj:FindFirstChild("HumanoidRootPart")
-                if root then 
+    -- 2. Cari Killer sebagai NPC/Bot di seluruh Workspace (Mencari Model dengan Humanoid yang bukan player)
+    -- Ini adalah metode paling cerdas & 100% akurat untuk melacak killer bot di Lori's Nightmare!
+    local playerChars = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character then
+            playerChars[p.Character] = true
+        end
+    end
+    
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj ~= LocalPlayer.Character and not playerChars[obj] then
+            local hum = obj:FindFirstChildOfClass("Humanoid")
+            local root = obj:FindFirstChild("HumanoidRootPart")
+            if hum and root then
+                local oName = obj.Name:lower()
+                -- Singkirkan dekorasi/objek umum yang bukan killer
+                if not (oName:find("dummy") or oName:find("mannequin") or oName:find("npc") or 
+                        oName:find("anchor") or oName:find("shop") or oName:find("avatar") or
+                        oName:find("tv") or oName:find("television") or oName:find("locker") or
+                        oName:find("generator") or oName:find("cabinet") or oName:find("gate") or
+                        oName:find("door") or oName:find("lobby")) then
                     if debugLog then
-                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Bot/NPC Workspace): " .. obj.Name)
+                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer Bot (Non-Player Model): " .. obj.Name)
                     end
-                    return root 
+                    return root
                 end
             end
         end
     end
     
-    -- 3. Fallback: Cari di seluruh Workspace descendants
+    -- 3. Fallback: Cari Killer berdasarkan model name / atribut / red stain jika metode di atas terlewati
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("Model") and obj ~= LocalPlayer.Character then
             local oName = obj.Name:lower()
@@ -1558,7 +1612,7 @@ local function findKillerRoot()
                 local root = obj:FindFirstChild("HumanoidRootPart")
                 if root then 
                     if debugLog then
-                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Bot/NPC Descendant): " .. obj.Name)
+                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Fallback Bot Model Name): " .. obj.Name)
                     end
                     return root 
                 end

@@ -322,8 +322,16 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 2. Cek Karakteristik Fisik Mutlak (Red Light, Model Nama Slasher, Senjata Non-Aksesoris)
-    -- Ini diletakkan SEBELUM cek Lives/Team agar terhindar dari bug replikasi atribut/tim dari ronde sebelumnya!
+    -- 2. Cek Tim Roblox (Sumber kebenaran paling mutlak!)
+    -- Diletakkan di atas sebelum cek Lives agar tidak terlewat jika Lives di-replicate salah
+    if player.Team then
+        local tName = player.Team.Name:lower()
+        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("chaser") or tName:find("hunter") then
+            return true
+        end
+    end
+
+    -- 3. Cek Karakteristik Fisik Mutlak (Red Light, Model Monster Kustom, Senjata)
     local char = player.Character
     if char then
         -- Cek lampu merah / red stain (Hanya dimiliki Killer aktif!)
@@ -331,10 +339,15 @@ local function checkIfKiller(player)
             return true
         end
 
-        -- Cek model nama monster (Hanya dimiliki Killer aktif!)
-        local cName = char.Name:lower()
-        if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("slasher") or cName:find("chaser") or cName:find("hunter") or cName:find("spectre") or cName:find("azazil") or cName:find("spider") then
-            return true
+        -- Cek descendants karakter untuk model/part/folder/decal bertema monster/killer
+        for _, child in ipairs(char:GetDescendants()) do
+            if child:IsA("Model") or child:IsA("BasePart") or child:IsA("Folder") or child:IsA("Decal") or child:IsA("Texture") then
+                local cName = child.Name:lower()
+                if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("slasher") or cName:find("chaser") or cName:find("hunter") or cName:find("spectre") or cName:find("azazil") or cName:find("spider") or cName:find("monster") or
+                   cName:find("smile") or cName:find("smiling") or cName:find("grin") or cName:find("happy") or cName:find("creepy") then
+                    return true
+                end
+            end
         end
 
         -- Cek senjata killer (Mendukung BasePart & Model kustom, menyaring aksesoris kosmetik survivor)
@@ -351,24 +364,20 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 3. Cek Lives (Jika tidak terbukti Killer secara fisik, survivor aktif pasti memiliki Lives)
+    -- 4. Cek Lives (Jika tidak terbukti Killer secara fisik/tim, survivor aktif pasti memiliki Lives)
     local hasLives = player:GetAttribute("Lives") ~= nil
     if hasLives then
         return false
     end
 
-    -- 4. Cek Tim Roblox
+    -- 5. Jika berada di tim Survivor yang terkonfirmasi
     if player.Team then
         local tName = player.Team.Name:lower()
         if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("lobby") or tName:find("spectator") or tName:find("waiting") or tName:find("choosing") then
             return false
         end
-        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("chaser") or tName:find("hunter") then
-            return true
-        end
     end
 
-    -- 5. Jika tidak ada bukti kuat lainnya, default ke false (survivor) untuk keamanan
     return false
 end
 

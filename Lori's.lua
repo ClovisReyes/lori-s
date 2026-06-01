@@ -808,9 +808,17 @@ local function autoSkillCheck()
                                     lastNeedleX[d] = currentX
                                 end
                                 
-                                -- 2. Cari Tape / Goal (ImageLabel atau Frame bernama "Goal")
-                                if dName == "Goal" and (d:IsA("ImageLabel") or d:IsA("Frame")) then
+                                -- 2. Cari Tape / Zona Kaset (ImageLabel bernama "Goal" atau "img" berukuran kaset)
+                                if dName == "Goal" and d:IsA("ImageLabel") then
                                     tape = d
+                                elseif dName == "img" and d:IsA("ImageLabel") then
+                                    local sz = d.AbsoluteSize
+                                    local pos = d.AbsolutePosition
+                                    if sz.X >= 45 and sz.X <= 120 and pos.X > 330 then
+                                        if tape == nil or pos.X > tape.AbsolutePosition.X then
+                                            tape = d
+                                        end
+                                    end
                                 end
                                 
                                 -- 3. Cari Tombol Klik
@@ -820,37 +828,19 @@ local function autoSkillCheck()
                             end
                         end
                         
-                        -- Fallback 1: Jika needle belum ketemu, cari Frame "bar" dengan ukuran X terkecil
+                        -- Fallback 1: Jika needle belum ketemu, cari Frame "bar" dengan ukuran Y terkecil (jarum lebih pendek dari track)
                         if not needle then
                             for _, d in ipairs(gui:GetDescendants()) do
                                 if d.Name == "bar" and d:IsA("Frame") and isGuiVisible(d) then
-                                    if needle == nil or d.AbsoluteSize.X < needle.AbsoluteSize.X then
+                                    local sz = d.AbsoluteSize
+                                    if sz.Y < 50 then
                                         needle = d
                                     end
                                 end
                             end
                         end
                         
-                        -- Fallback 2: Jika tape/Goal belum ketemu, cari ImageLabel/Frame berukuran sedang yang posisinya paling kanan (X terbesar)
-                        if not tape then
-                            local bestEl = nil
-                            local maxX = -1
-                            for _, d in ipairs(gui:GetDescendants()) do
-                                if (d:IsA("ImageLabel") or d:IsA("Frame")) and isGuiVisible(d) then
-                                    local sz = d.AbsoluteSize
-                                    local pos = d.AbsolutePosition
-                                    if sz.X >= 15 and sz.X <= 150 then
-                                        if pos.X > maxX then
-                                            maxX = pos.X
-                                            bestEl = d
-                                        end
-                                    end
-                                end
-                            end
-                            tape = bestEl
-                        end
-                        
-                        -- Fallback 3: Jika skillBtn belum ketemu, cari TextButton/ImageButton yang visible
+                        -- Fallback 2: Jika skillBtn belum ketemu, cari TextButton/ImageButton yang visible
                         if not skillBtn then
                             for _, d in ipairs(gui:GetDescendants()) do
                                 if (d:IsA("TextButton") or d:IsA("ImageButton")) and isGuiVisible(d) then
@@ -1586,16 +1576,51 @@ local function findKillerRoot()
             local root = obj:FindFirstChild("HumanoidRootPart")
             if hum and root then
                 local oName = obj.Name:lower()
-                -- Singkirkan dekorasi/objek umum yang bukan killer
-                if not (oName:find("dummy") or oName:find("mannequin") or oName:find("npc") or 
-                        oName:find("anchor") or oName:find("shop") or oName:find("avatar") or
-                        oName:find("tv") or oName:find("television") or oName:find("locker") or
-                        oName:find("generator") or oName:find("cabinet") or oName:find("gate") or
-                        oName:find("door") or oName:find("lobby")) then
-                    if debugLog then
-                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer Bot (Non-Player Model): " .. obj.Name)
+                
+                -- Killer Bot harus memenuhi salah satu kriteria kuat ini agar tidak salah mendeteksi anak tidur/dummy:
+                local isKillerCandidate = false
+                
+                -- Kriteria A: Nama model mengandung kata kunci killer/monster spesifik
+                if oName:find("nightmare") or oName:find("killer") or oName:find("monster") or 
+                   oName:find("carnivore") or oName:find("phantom") or oName:find("tarantula") or 
+                   oName:find("spider") or oName:find("lori") or oName:find("slasher") or 
+                   oName:find("chaser") or oName:find("hunter") then
+                    isKillerCandidate = true
+                end
+                
+                -- Kriteria B: Memiliki atribut killer bawaan game
+                if obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") or obj:GetAttribute("Role") == "Nightmare" then
+                    isKillerCandidate = true
+                end
+                
+                -- Kriteria C: Memiliki lampu merah / vision cone / senjata killer
+                if hasRedLightOrStain(obj) then
+                    isKillerCandidate = true
+                end
+                
+                -- Kriteria D: Membawa senjata killer
+                for _, child in ipairs(obj:GetDescendants()) do
+                    if child:IsA("Tool") or child:IsA("Weapon") then
+                        local tName = child.Name:lower()
+                        if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") then
+                            isKillerCandidate = true
+                            break
+                        end
                     end
-                    return root
+                end
+                
+                if isKillerCandidate then
+                    -- Singkirkan dekorasi/objek umum yang bukan killer
+                    if not (oName:find("dummy") or oName:find("mannequin") or oName:find("npc") or 
+                            oName:find("anchor") or oName:find("shop") or oName:find("avatar") or
+                            oName:find("tv") or oName:find("television") or oName:find("locker") or
+                            oName:find("generator") or oName:find("cabinet") or oName:find("gate") or
+                            oName:find("door") or oName:find("lobby")) then
+                        if debugLog then
+                            print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer Bot (Model Terverifikasi): " .. obj.Name)
+                        end
+                        return root
+                    end
                 end
             end
         end

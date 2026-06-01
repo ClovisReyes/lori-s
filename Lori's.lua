@@ -297,6 +297,7 @@ local function checkIfKiller(player)
     if not player then return false end
     if player == LocalPlayer then return false end
 
+
     -- 0. Cek Team (Sangat andal jika game menggunakan Team resmi)
     local team = player.Team
     if team then
@@ -2059,44 +2060,50 @@ local function autoFollowKillerLoop()
                             
                             pcall(function()
                                 local char = LocalPlayer.Character
-                                
-                                -- Hancurkan paksa seluruh carry-weld eksternal di workspace yang membelenggu karakter kita
-                                if char then
-                                    for _, child in ipairs(workspace:GetDescendants()) do
-                                        if child:IsA("Weld") or child:IsA("Motor6D") or child:IsA("WeldConstraint") then
-                                            local p0 = child.Part0
-                                            local p1 = child.Part1
-                                            if p0 and p1 then
-                                                if p0:IsDescendantOf(char) or p1:IsDescendantOf(char) then
-                                                    -- Jangan hancurkan joint internal milik karakter kita sendiri
-                                                    if not (p0:IsDescendantOf(char) and p1:IsDescendantOf(char)) then
-                                                        pcall(function() child:Destroy() end)
-                                                    end
+                                if not char then return end
+
+                                -- 1. Hancurkan paksa seluruh joint eksternal di client
+                                for _, child in ipairs(workspace:GetDescendants()) do
+                                    if child:IsA("JointInstance") or child:IsA("Weld") or child:IsA("Motor6D") or child:IsA("WeldConstraint") then
+                                        local p0 = child.Part0
+                                        local p1 = child.Part1
+                                        if p0 and p1 then
+                                            if p0:IsDescendantOf(char) or p1:IsDescendantOf(char) then
+                                                if not (p0:IsDescendantOf(char) and p1:IsDescendantOf(char)) then
+                                                    pcall(function() child:Destroy() end)
                                                 end
                                             end
                                         end
                                     end
                                 end
-                                
-                                local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+                                -- 2. Trik Premium: Lepas parent karakter sementara ke nil untuk memutuskan joint di server secara permanen!
+                                local oldParent = char.Parent
+                                char.Parent = nil
+                                task.wait(0.1)
+                                char.Parent = oldParent
+
+                                -- 3. Pulihkan kondisi fisik karakter
+                                local hum = char:FindFirstChildOfClass("Humanoid")
                                 if hum then
                                     hum.PlatformStand = false
+                                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
                                 end
-                                
-                                local root = char and char:FindFirstChild("HumanoidRootPart")
+
+                                local root = char:FindFirstChild("HumanoidRootPart")
                                 if root then
                                     root.Anchored = false
-                                    -- Teleportasi instan 12 stud di belakang Killer setelah terlepas secara fisik
+                                    -- Teleportasi instan 15 stud di belakang Killer setelah terlepas secara fisik
                                     local killerRoot = findKillerRoot()
                                     if killerRoot then
-                                        root.CFrame = killerRoot.CFrame * CFrame.new(0, 4, 12)
+                                        root.CFrame = killerRoot.CFrame * CFrame.new(0, 4, 15)
                                     else
-                                        root.CFrame = root.CFrame * CFrame.new(0, 10, 0)
+                                        root.CFrame = root.CFrame * CFrame.new(0, 15, 0)
                                     end
                                 end
                             end)
                             
-                            notify("Auto Follow", "Slip Away! Teleport dinonaktifkan sampai Anda sehat.", 3)
+                            notify("Auto Follow", "Slip Away! Terlepas & teleport 15 stud.", 3)
                         end
                         
                         pcall(function() obj.MouseButton1Click:Connect(triggerSlipAway) end)

@@ -302,13 +302,7 @@ local function checkIfKiller(player)
     if not player then return false end
     if player == LocalPlayer then return false end
 
-    -- 0. Cek Lives (Survivor pasti punya ini di arena pertandingan aktif, Killer tidak pernah punya)
-    local hasLives = player:GetAttribute("Lives") ~= nil
-    if hasLives then
-        return false
-    end
-
-    -- 1. Cek SelectedMonster dan Lives (Sangat akurat di arena)
+    -- 1. Cek SelectedMonster (Atribut Killer Ronde Aktif Paling Mutlak)
     local sm = player:GetAttribute("SelectedMonster")
     if sm ~= nil then
         local s = tostring(sm):lower()
@@ -317,18 +311,7 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 2. Cek Tim Roblox (Sumber kebenaran paling mutlak!)
-    if player.Team then
-        local tName = player.Team.Name:lower()
-        if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("lobby") or tName:find("spectator") or tName:find("waiting") or tName:find("choosing") then
-            return false
-        end
-        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("chaser") or tName:find("hunter") then
-            return true
-        end
-    end
-
-    -- 3. Cek Atribut Killer Ronde Aktif
+    -- 1b. Cek Atribut Killer Ronde Aktif Lainnya
     for _, attrName in ipairs({"Killer", "Nightmare", "IsNightmare", "IsKiller", "IsMonster", "Monster"}) do
         local v = player:GetAttribute(attrName)
         if v ~= nil then
@@ -336,6 +319,23 @@ local function checkIfKiller(player)
             if s ~= "" and s ~= "false" and s ~= "0" and s ~= "nil" and s ~= "none" then
                 return true
             end
+        end
+    end
+
+    -- 2. Cek Lives (Jika tidak ada atribut monster/killer, survivor aktif pasti memiliki Lives)
+    local hasLives = player:GetAttribute("Lives") ~= nil
+    if hasLives then
+        return false
+    end
+
+    -- 3. Cek Tim Roblox (Sumber kebenaran paling mutlak!)
+    if player.Team then
+        local tName = player.Team.Name:lower()
+        if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("lobby") or tName:find("spectator") or tName:find("waiting") or tName:find("choosing") then
+            return false
+        end
+        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("chaser") or tName:find("hunter") then
+            return true
         end
     end
 
@@ -1519,9 +1519,21 @@ local function espUpdateLoop()
                     local oName = obj.Name:lower()
                     local isBotKiller = false
                     
+                    -- Lacak senjata killer bot di descendants model
+                    local hasWeapon = false
+                    for _, child in ipairs(obj:GetDescendants()) do
+                        if child:IsA("BasePart") or child:IsA("Model") then
+                            local tName = child.Name:lower()
+                            if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") or tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or tName:find("sickle") then
+                                hasWeapon = true
+                                break
+                            end
+                        end
+                    end
+                    
                     if oName:find("nightmare") or oName:find("monster") or oName:find("carnivore") or
                        oName:find("phantom") or oName:find("tarantula") or oName:find("spider") or
-                       oName:find("slasher") or oName:find("hunter") or hasRedLightOrStain(obj) then
+                       oName:find("slasher") or oName:find("hunter") or hasRedLightOrStain(obj) or hasWeapon then
                         isBotKiller = true
                     end
                     

@@ -2041,115 +2041,146 @@ local function autoFollowKillerLoop()
 
     -- Monitor tombol SLIP AWAY di PlayerGui secara berkala
     task.spawn(function()
+        local function virtualClick(btn)
+            if not btn then return end
+            if firesignal then
+                pcall(function() firesignal(btn.MouseButton1Click) end)
+                pcall(function() firesignal(btn.Activated) end)
+            elseif getconnections then
+                for _, event in ipairs({btn.MouseButton1Click, btn.Activated}) do
+                    for _, c in ipairs(getconnections(event)) do
+                        pcall(function() c:Fire() end)
+                    end
+                end
+            else
+                pcall(function() btn:Activate() end)
+            end
+        end
+
         local hookedButtons = {} -- Track tombol yang sudah di-hook
         while isAutoFollowKiller do
-            task.wait(0.5)
+            task.wait(0.1) -- Pemindaian super cepat untuk kenyamanan auto-click
             local pGui = LocalPlayer:FindFirstChild("PlayerGui")
             if not pGui then continue end
+            
             for _, obj in ipairs(pGui:GetDescendants()) do
-                if (obj:IsA("TextButton") or obj:IsA("ImageButton")) and obj.Visible and not hookedButtons[obj] then
+                if (obj:IsA("TextButton") or obj:IsA("ImageButton")) and obj.Visible then
                     local n = obj.Name:lower()
                     local t = ""
                     pcall(function() t = obj.Text:lower() end)
-                    if n:find("slip") or t:find("slip") or n:find("away") or t:find("away") then
-                        hookedButtons[obj] = true
+                    
+                    if n:find("slip") or t:find("slip") or n:find("away") or t:find("away") or n:find("wiggle") or t:find("wiggle") then
+                        -- 1. Jalankan Auto-Clicker Virtual Super Cepat (Auto-Wiggle) secara realtime!
+                        pcall(function() virtualClick(obj) end)
                         
-                        local function triggerSlipAway()
-                            if slipAwayTriggeredThisDown then return end
-                            slipAwayTriggeredThisDown = true
+                        -- 2. Daftarkan hook event click jika belum di-hook
+                        if not hookedButtons[obj] then
+                            hookedButtons[obj] = true
                             
-                            pcall(function()
-                                local char = LocalPlayer.Character
-                                if not char then return end
-
-                                -- 1. Hancurkan seluruh joint eksternal di client
-                                for _, part in ipairs(char:GetChildren()) do
-                                    if part:IsA("BasePart") then
-                                        pcall(function() part:BreakJoints() end)
-                                    end
-                                end
+                            local function triggerSlipAway()
+                                if slipAwayTriggeredThisDown then return end
+                                slipAwayTriggeredThisDown = true
                                 
-                                for _, child in ipairs(char:GetDescendants()) do
-                                    if child:IsA("JointInstance") or child:IsA("Weld") or child:IsA("Motor6D") or child:IsA("WeldConstraint") then
-                                        local p0 = child.Part0
-                                        local p1 = child.Part1
-                                        if p0 and p1 then
-                                            if not (p0:IsDescendantOf(char) and p1:IsDescendantOf(char)) then
-                                                pcall(function() child:Destroy() end)
+                                pcall(function()
+                                    local char = LocalPlayer.Character
+                                    if not char then return end
+
+                                    -- 1. Hancurkan seluruh joint eksternal di client
+                                    for _, part in ipairs(char:GetChildren()) do
+                                        if part:IsA("BasePart") then
+                                            pcall(function() part:BreakJoints() end)
+                                        end
+                                    end
+                                    
+                                    for _, child in ipairs(char:GetDescendants()) do
+                                        if child:IsA("JointInstance") or child:IsA("Weld") or child:IsA("Motor6D") or child:IsA("WeldConstraint") then
+                                            local p0 = child.Part0
+                                            local p1 = child.Part1
+                                            if p0 and p1 then
+                                                if not (p0:IsDescendantOf(char) and p1:IsDescendantOf(char)) then
+                                                    pcall(function() child:Destroy() end)
+                                                end
                                             end
                                         end
                                     end
-                                end
 
-                                -- 2. Trik Premium: Lepas parent parts karakter sementara ke nil untuk memutuskan joint di server secara permanen!
-                                local partsToReset = {}
-                                for _, part in ipairs(char:GetChildren()) do
-                                    if part:IsA("BasePart") then
-                                        table.insert(partsToReset, {
-                                            Part = part,
-                                            OriginalParent = char,
-                                            OriginalCFrame = part.CFrame
-                                        })
-                                    end
-                                end
-                                
-                                for _, data in ipairs(partsToReset) do
-                                    pcall(function() data.Part.Parent = nil end)
-                                end
-                                
-                                task.wait(0.08)
-                                
-                                for _, data in ipairs(partsToReset) do
-                                    pcall(function()
-                                        data.Part.Parent = data.OriginalParent
-                                        data.Part.CFrame = data.OriginalCFrame
-                                    end)
-                                end
-
-                                -- 3. Pulihkan kondisi fisik karakter
-                                local hum = char:FindFirstChildOfClass("Humanoid")
-                                if hum then
-                                    hum.PlatformStand = false
-                                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-                                end
-
-                                -- 4. Teleportasi Kontinu Selama 1.5 Detik untuk menembus server-side rubberbanding!
-                                local startTime = os.clock()
-                                local teleportLoop
-                                teleportLoop = RunService.Heartbeat:Connect(function()
-                                    if not isAutoFollowKiller or os.clock() - startTime > 1.5 then
-                                        if teleportLoop then
-                                            teleportLoop:Disconnect()
-                                            teleportLoop = nil
+                                    -- 2. Trik Premium: Lepas parent parts karakter sementara ke nil untuk memutuskan joint di server secara permanen!
+                                    local partsToReset = {}
+                                    for _, part in ipairs(char:GetChildren()) do
+                                        if part:IsA("BasePart") then
+                                            table.insert(partsToReset, {
+                                                Part = part,
+                                                OriginalParent = char,
+                                                OriginalCFrame = part.CFrame
+                                            })
                                         end
-                                        return
                                     end
                                     
-                                    local root = char:FindFirstChild("HumanoidRootPart")
-                                    if root then
-                                        root.Anchored = false
-                                        pcall(function()
-                                            root.Velocity = Vector3.zero
-                                            root.RotVelocity = Vector3.zero
-                                            root.AssemblyLinearVelocity = Vector3.zero
-                                            root.AssemblyAngularVelocity = Vector3.zero
-                                        end)
-                                        
-                                        local killerRoot = findKillerRoot()
-                                        if killerRoot then
-                                            root.CFrame = killerRoot.CFrame * CFrame.new(0, 4, 15)
-                                        else
-                                            root.CFrame = root.CFrame * CFrame.new(0, 15, 0)
-                                        end
+                                    for _, data in ipairs(partsToReset) do
+                                        pcall(function() data.Part.Parent = nil end)
                                     end
+                                    
+                                    task.wait(0.08)
+                                    
+                                    for _, data in ipairs(partsToReset) do
+                                        pcall(function()
+                                            data.Part.Parent = data.OriginalParent
+                                            data.Part.CFrame = data.OriginalCFrame
+                                        end)
+                                    end
+
+                                    -- 3. Pulihkan kondisi fisik karakter
+                                    local hum = char:FindFirstChildOfClass("Humanoid")
+                                    if hum then
+                                        hum.PlatformStand = false
+                                        pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+                                    end
+
+                                    -- 4. Teleportasi Kontinu Selama 1.5 Detik untuk menembus server-side rubberbanding!
+                                    local startTime = os.clock()
+                                    local teleportLoop
+                                    teleportLoop = RunService.Heartbeat:Connect(function()
+                                        if not isAutoFollowKiller or os.clock() - startTime > 1.5 then
+                                            if teleportLoop then
+                                                teleportLoop:Disconnect()
+                                                teleportLoop = nil
+                                            end
+                                            return
+                                        end
+                                        
+                                        local root = char:FindFirstChild("HumanoidRootPart")
+                                        if root then
+                                            root.Anchored = false
+                                            pcall(function()
+                                                root.Velocity = Vector3.zero
+                                                root.RotVelocity = Vector3.zero
+                                                root.AssemblyLinearVelocity = Vector3.zero
+                                                root.AssemblyAngularVelocity = Vector3.zero
+                                            end)
+                                            
+                                            local killerRoot = findKillerRoot()
+                                            if killerRoot then
+                                                root.CFrame = killerRoot.CFrame * CFrame.new(0, 4, 15)
+                                            else
+                                                root.CFrame = root.CFrame * CFrame.new(0, 15, 0)
+                                            end
+                                        end
+                                    end)
                                 end)
-                            end)
+                                
+                                notify("Auto Follow", "Slip Away! Terlepas & teleport kontinu.", 3)
+                            end
                             
-                            notify("Auto Follow", "Slip Away! Terlepas & teleport kontinu.", 3)
+                            pcall(function() obj.MouseButton1Click:Connect(triggerSlipAway) end)
+                            pcall(function() obj.Activated:Connect(triggerSlipAway) end)
+                            
+                            -- Pemicu otomatis teleportasi setelah 0.8 detik tombol muncul (mengakomodasi waktu auto-wiggle)
+                            task.delay(0.8, function()
+                                if obj and obj.Parent and obj.Visible then
+                                    triggerSlipAway()
+                                end
+                            end)
                         end
-                        
-                        pcall(function() obj.MouseButton1Click:Connect(triggerSlipAway) end)
-                        pcall(function() obj.Activated:Connect(triggerSlipAway) end)
                     end
                 end
             end
@@ -2481,3 +2512,4 @@ pcall(function() screenGuiParentStr = tostring(ScreenGui.Parent) end)
 print("[DEBUG] ScreenGui.Parent:", screenGuiParentStr)
 print("[DEBUG] MainFrame.Visible:", MainFrame.Visible)
 print("[DEBUG] MainFrame.Size:", MainFrame.Size)
+

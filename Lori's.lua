@@ -1217,23 +1217,53 @@ local function autoSkillCheck()
                     end
                     
                 elseif activeName == "minigame" then
-                    for _, btn in ipairs(activeGui:GetDescendants()) do
-                        if not (btn:IsA("ImageButton") or btn:IsA("TextButton")) then continue end
-                        if not isGuiVisible(btn) then continue end
-                        local sz   = btn.AbsoluteSize
-                        local bpos = btn.AbsolutePosition
-                        if sz.X < 5 or sz.Y < 5 or sz.X > 500 or sz.Y > 500 then continue end
-                        if bpos.X < 0 or bpos.Y < 0 then continue end
-                        
-                        local btnName = btn.Name
-                        -- Deteksi button koin: "Template", "Coin", "GoldNoCoin"
-                        if btnName == "Template" or btnName == "Coin" or btnName == "GoldNoCoin" then
-                            -- Hindari klik ganda button yang sama dalam waktu singkat
-                            _G.qteCoinClicked = _G.qteCoinClicked or {}
-                            local last = _G.qteCoinClicked[btn]
+                    local clickedBall = false
+                    -- 1. Deteksi Bola QTE TV (Lingkaran dengan tanda seru "!")
+                    for _, child in ipairs(activeGui:GetDescendants()) do
+                        if child:IsA("TextLabel") and child.Visible and (child.Text == "!" or child.Name == "label") then
+                            _G.qteTvClicked = _G.qteTvClicked or {}
+                            local last = _G.qteTvClicked[child]
                             if not last or (os.clock() - last) > 0.4 then
-                                _G.qteCoinClicked[btn] = os.clock()
-                                clickBtn(btn, true) -- klik virtual silent (yang terbukti work)
+                                _G.qteTvClicked[child] = os.clock()
+                                clickedBall = true
+                                
+                                task.spawn(function()
+                                    local guiInset = game:GetService("GuiService"):GetGuiInset()
+                                    local bp = child.AbsolutePosition
+                                    local bs = child.AbsoluteSize
+                                    local cx = bp.X + bs.X / 2
+                                    local cy = bp.Y + bs.Y / 2 + guiInset.Y
+                                    
+                                    if VirtualInputManager then
+                                        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                                        task.wait(0.01)
+                                        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                                        print("[QTE TV] Berhasil mengklik bola pada:", cx, cy)
+                                    end
+                                end)
+                                break
+                            end
+                        end
+                    end
+                    
+                    -- 2. Deteksi Button Koin/Shop Fallback
+                    if not clickedBall then
+                        for _, btn in ipairs(activeGui:GetDescendants()) do
+                            if not (btn:IsA("ImageButton") or btn:IsA("TextButton")) then continue end
+                            if not isGuiVisible(btn) then continue end
+                            local sz   = btn.AbsoluteSize
+                            local bpos = btn.AbsolutePosition
+                            if sz.X < 5 or sz.Y < 5 or sz.X > 500 or sz.Y > 500 then continue end
+                            if bpos.X < 0 or bpos.Y < 0 then continue end
+                            
+                            local btnName = btn.Name
+                            if btnName == "Template" or btnName == "Coin" or btnName == "GoldNoCoin" then
+                                _G.qteCoinClicked = _G.qteCoinClicked or {}
+                                local last = _G.qteCoinClicked[btn]
+                                if not last or (os.clock() - last) > 0.4 then
+                                    _G.qteCoinClicked[btn] = os.clock()
+                                    clickBtn(btn, true)
+                                end
                             end
                         end
                     end
@@ -2035,6 +2065,23 @@ local function autoFollowKillerLoop()
         autoFollowConn = nil
     end
 
+    -- Bersihkan diagThread lama jika ada
+    if _G.LoriHubGlobals.diagThread then
+        pcall(function() task.cancel(_G.LoriHubGlobals.diagThread) end)
+        _G.LoriHubGlobals.diagThread = nil
+    end
+
+    -- Bersihkan GUI lama jika ada
+    pcall(function()
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        if pg and pg:FindFirstChild("AutoFollowDiag") then
+            pg.AutoFollowDiag:Destroy()
+        end
+        if CoreGui:FindFirstChild("AutoFollowDiag") then
+            CoreGui.AutoFollowDiag:Destroy()
+        end
+    end)
+
     -- Notifikasi status di layar
     local function notify(title, text, duration)
         pcall(function()
@@ -2045,6 +2092,188 @@ local function autoFollowKillerLoop()
     end
 
     notify("Auto Follow", "Aktif! Menunggu kondisi knocked...", 3)
+
+    -- MEMBUAT INSTANCE OVERLAY DIAGNOSTIC / DEBUG
+    local DiagGui = Instance.new("ScreenGui")
+    DiagGui.Name = "AutoFollowDiag"
+    DiagGui.ResetOnSpawn = false
+    DiagGui.Parent = TargetParent
+
+    local DiagFrame = Instance.new("Frame")
+    DiagFrame.Name = "DiagFrame"
+    DiagFrame.Size = UDim2.new(0, 310, 0, 185)
+    DiagFrame.Position = UDim2.new(0.05, 0, 0.45, 0)
+    DiagFrame.BackgroundColor3 = Theme.Background
+    DiagFrame.BackgroundTransparency = 0.15
+    DiagFrame.BorderSizePixel = 0
+    DiagFrame.Parent = DiagGui
+
+    local DiagCorner = Instance.new("UICorner")
+    DiagCorner.CornerRadius = UDim.new(0, 10)
+    DiagCorner.Parent = DiagFrame
+
+    local DiagStroke = Instance.new("UIStroke")
+    DiagStroke.Thickness = 1.5
+    DiagStroke.Color = Theme.Accent
+    DiagStroke.Transparency = 0.2
+    DiagStroke.Parent = DiagFrame
+
+    -- Dragging System untuk DiagFrame
+    local dragToggle = nil
+    local dragStart = nil
+    local startPos = nil
+    
+    DiagFrame.InputBegan:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            dragToggle = true
+            dragStart = input.Position
+            startPos = DiagFrame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragToggle = false
+                end
+            end)
+        end
+    end)
+    
+    DiagFrame.InputChanged:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            if dragToggle then
+                local delta = input.Position - dragStart
+                local position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+                tween(DiagFrame, TweenInfo.new(0.08), {Position = position})
+            end
+        end
+    end)
+
+    -- Header / Title
+    local Header = Instance.new("TextLabel")
+    Header.Size = UDim2.new(1, 0, 0, 32)
+    Header.BackgroundTransparency = 1
+    Header.Text = "🤖 AUTO-FOLLOW LIVE DIAGNOSTICS"
+    Header.TextColor3 = Theme.Accent
+    Header.TextSize = 11
+    applyFont(Header, true)
+    Header.Parent = DiagFrame
+
+    -- Layout
+    local ContentFrame = Instance.new("Frame")
+    ContentFrame.Size = UDim2.new(1, -20, 1, -42)
+    ContentFrame.Position = UDim2.new(0, 10, 0, 32)
+    ContentFrame.BackgroundTransparency = 1
+    ContentFrame.Parent = DiagFrame
+
+    local ListLayout = Instance.new("UIListLayout")
+    ListLayout.Padding = UDim.new(0, 5)
+    ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    ListLayout.Parent = ContentFrame
+
+    -- Helper untuk baris diagnostic
+    local function createStatusRow(labelName, labelText)
+        local Row = Instance.new("Frame")
+        Row.Size = UDim2.new(1, 0, 0, 22)
+        Row.BackgroundTransparency = 1
+        Row.Parent = ContentFrame
+
+        local NameLbl = Instance.new("TextLabel")
+        NameLbl.Size = UDim2.new(0.45, 0, 1, 0)
+        NameLbl.BackgroundTransparency = 1
+        NameLbl.Text = labelText
+        NameLbl.TextColor3 = Theme.TextMuted
+        NameLbl.TextSize = 11
+        applyFont(NameLbl, false)
+        NameLbl.TextXAlignment = Enum.TextXAlignment.Left
+        NameLbl.Parent = Row
+
+        local ValLbl = Instance.new("TextLabel")
+        ValLbl.Name = labelName
+        ValLbl.Size = UDim2.new(0.55, 0, 1, 0)
+        ValLbl.Position = UDim2.new(0.45, 0, 0, 0)
+        ValLbl.BackgroundTransparency = 1
+        ValLbl.Text = "Loading..."
+        ValLbl.TextColor3 = Theme.TextActive
+        ValLbl.TextSize = 11
+        applyFont(ValLbl, true)
+        ValLbl.TextXAlignment = Enum.TextXAlignment.Left
+        ValLbl.Parent = Row
+
+        return ValLbl
+    end
+
+    local statusAF = createStatusRow("ValAF", "Auto-Follow:")
+    local statusChar = createStatusRow("ValChar", "Kondisi Karakter:")
+    local statusKiller = createStatusRow("ValKiller", "Killer Terdeteksi:")
+    local statusType = createStatusRow("ValType", "Kategori Killer:")
+    local statusAction = createStatusRow("ValAction", "Status Aksi:")
+
+    -- Jalankan Thread Diagnostic Live secara paralel
+    local diagThread
+    diagThread = task.spawn(function()
+        while isAutoFollowKiller and DiagGui and DiagGui.Parent do
+            pcall(function()
+                -- Update Auto-Follow
+                statusAF.Text = "ACTIVE"
+                statusAF.TextColor3 = Theme.Green
+
+                -- Update Karakter
+                local isKnocked = isPlayerKnocked()
+                statusChar.Text = isKnocked and "DOWNED (Knocked)" or "SEHAT"
+                statusChar.TextColor3 = isKnocked and Theme.Red or Theme.Green
+
+                -- Update Killer
+                local killerRoot = findKillerRoot()
+                if killerRoot then
+                    local killerModel = killerRoot.Parent
+                    local killerPlayer = Players:GetPlayerFromCharacter(killerModel)
+                    
+                    if killerPlayer then
+                        statusKiller.Text = killerPlayer.DisplayName .. " (@" .. killerPlayer.Name .. ")"
+                        statusType.Text = "PLAYER (Skin Survivor)"
+                        statusType.TextColor3 = Color3.fromRGB(0, 180, 255)
+                    else
+                        statusKiller.Text = killerModel.Name
+                        statusType.Text = "BOT/NPC (Skin Default)"
+                        statusType.TextColor3 = Theme.Yellow
+                    end
+                    statusKiller.TextColor3 = Theme.Red
+                else
+                    statusKiller.Text = "Mencari Killer..."
+                    statusKiller.TextColor3 = Theme.TextMuted
+                    statusType.Text = "—"
+                    statusType.TextColor3 = Theme.TextMuted
+                end
+
+                -- Update Status Aksi
+                if not isKnocked then
+                    statusAction.Text = "IDLE (Bisa Main Biasa)"
+                    statusAction.TextColor3 = Theme.TextMuted
+                elseif slipAwayTriggeredThisDown then
+                    statusAction.Text = "SLIP AWAY (Cooldown)"
+                    statusAction.TextColor3 = Theme.Yellow
+                else
+                    local char = LocalPlayer.Character
+                    local welded = false
+                    if killerRoot then
+                        welded = isPlayerWelded(char, killerRoot)
+                    end
+                    
+                    if welded then
+                        statusAction.Text = "DIGENDONG KILLER (Auto-Wiggle)"
+                        statusAction.TextColor3 = Color3.fromRGB(255, 100, 0)
+                    elseif killerRoot then
+                        statusAction.Text = "TELEPORTING (Nempel Killer)"
+                        statusAction.TextColor3 = Theme.Green
+                    else
+                        statusAction.Text = "MENCARI CFRAME KILLER"
+                        statusAction.TextColor3 = Theme.Yellow
+                    end
+                end
+            end)
+            task.wait(0.1)
+        end
+    end)
+    _G.LoriHubGlobals.diagThread = diagThread
 
     -- Monitor tombol SLIP AWAY di PlayerGui secara berkala
     task.spawn(function()
@@ -2091,8 +2320,8 @@ local function autoFollowKillerLoop()
                                 pcall(function()
                                     local char = LocalPlayer.Character
                                     if not char then return end
-
-                                    -- 1. Hancurkan seluruh joint eksternal di client
+                                    
+                                    -- Hancurkan joint client-side
                                     for _, part in ipairs(char:GetChildren()) do
                                         if part:IsA("BasePart") then
                                             pcall(function() part:BreakJoints() end)
@@ -2111,7 +2340,7 @@ local function autoFollowKillerLoop()
                                         end
                                     end
 
-                                    -- 2. Trik Premium: Lepas parent parts karakter sementara ke nil untuk memutuskan joint di server secara permanen!
+                                    -- Lepas parent parts sementara ke nil untuk memutuskan joint di server secara permanen!
                                     local partsToReset = {}
                                     for _, part in ipairs(char:GetChildren()) do
                                         if part:IsA("BasePart") then
@@ -2135,15 +2364,13 @@ local function autoFollowKillerLoop()
                                             data.Part.CFrame = data.OriginalCFrame
                                         end)
                                     end
-
-                                    -- 3. Pulihkan kondisi fisik karakter
+                                    
                                     local hum = char:FindFirstChildOfClass("Humanoid")
                                     if hum then
                                         hum.PlatformStand = false
                                         pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
                                     end
 
-                                    -- 4. Teleportasi Kontinu Selama 1.5 Detik untuk menembus server-side rubberbanding!
                                     local startTime = os.clock()
                                     local teleportLoop
                                     teleportLoop = RunService.Heartbeat:Connect(function()
@@ -2181,7 +2408,6 @@ local function autoFollowKillerLoop()
                             pcall(function() obj.MouseButton1Click:Connect(triggerSlipAway) end)
                             pcall(function() obj.Activated:Connect(triggerSlipAway) end)
                             
-                            -- Pemicu otomatis teleportasi setelah 0.8 detik tombol muncul (mengakomodasi waktu auto-wiggle)
                             task.delay(0.8, function()
                                 if obj and obj.Parent and obj.Visible then
                                     triggerSlipAway()
@@ -2199,7 +2425,6 @@ local function autoFollowKillerLoop()
         if not myChar then return false end
         local kChar = kRoot and kRoot.Parent
         
-        -- Scan joints di karakter kita sendiri
         for _, child in ipairs(myChar:GetDescendants()) do
             if child:IsA("Weld") or child:IsA("Motor6D") or child:IsA("WeldConstraint") then
                 local p0 = child.Part0
@@ -2212,7 +2437,6 @@ local function autoFollowKillerLoop()
             end
         end
         
-        -- Scan joints di karakter killer
         if kChar then
             for _, child in ipairs(kChar:GetDescendants()) do
                 if child:IsA("Weld") or child:IsA("Motor6D") or child:IsA("WeldConstraint") then
@@ -2235,6 +2459,15 @@ local function autoFollowKillerLoop()
         if not isAutoFollowKiller then
             autoFollowConn:Disconnect()
             autoFollowConn = nil
+            
+            -- HANCURKAN DIAGNOSTICS & THREAD SAAT NONAKTIF
+            pcall(function()
+                if DiagGui then DiagGui:Destroy() end
+            end)
+            if diagThread then
+                pcall(function() task.cancel(diagThread) end)
+                diagThread = nil
+            end
             return
         end
         
@@ -2242,7 +2475,7 @@ local function autoFollowKillerLoop()
         local root = char and char:FindFirstChild("HumanoidRootPart")
         
         if root then
-            -- Hanya berteleportasi jika kita knocked/downed (sehat = bisa main biasa)
+            -- Hanya berteleportasi jika kita knocked/downed
             if not isPlayerKnocked() then
                 slipAwayTriggeredThisDown = false -- Reset status agar siap digunakan di downed berikutnya
                 local hum = char:FindFirstChildOfClass("Humanoid")
@@ -2259,7 +2492,6 @@ local function autoFollowKillerLoop()
 
             local killerRoot = findKillerRoot()
             if killerRoot then
-                -- Cek apakah kita sedang digendong (welded) oleh Killer secara fisik
                 local welded = false
                 pcall(function() welded = isPlayerWelded(char, killerRoot) end)
                 

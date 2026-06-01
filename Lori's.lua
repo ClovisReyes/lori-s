@@ -296,14 +296,33 @@ end
 
 local function getAttribute(player, name)
     if not player then return nil end
+    
+    -- 1. Cek Atribut Player
     local val = player:GetAttribute(name)
     if val ~= nil then return val end
     
+    -- 2. Cek Atribut Karakter
     local char = player.Character
     if char then
         val = char:GetAttribute(name)
         if val ~= nil then return val end
     end
+    
+    -- 3. Cek leaderstats (Roblox ValueObject standard)
+    local ls = player:FindFirstChild("leaderstats")
+    if ls then
+        local obj = ls:FindFirstChild(name)
+        if obj and (obj:IsA("ValueObject") or obj:IsA("StringValue") or obj:IsA("IntValue") or obj:IsA("BoolValue")) then
+            return obj.Value
+        end
+    end
+    
+    -- 4. Cek langsung sebagai anak Player
+    local direct = player:FindFirstChild(name)
+    if direct and (direct:IsA("ValueObject") or direct:IsA("StringValue") or direct:IsA("IntValue") or direct:IsA("BoolValue")) then
+        return direct.Value
+    end
+    
     return nil
 end
 
@@ -315,7 +334,41 @@ local CONFIRMED_KILLERS = {
     ["tarantula"] = true
 }
 
--- Helper: Mengecek apakah player memiliki nyawa survivor aktif (mendukung number, bool, string, nil)
+-- Helper: Mengecek apakah pemain tertentu sedang knocked/downed
+local function isAnyPlayerKnocked(player)
+    if not player then return false end
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+    
+    if hum.Health <= 1 then return true end
+    if hum.PlatformStand == true then return true end
+    
+    local state = hum:GetState()
+    if state == Enum.HumanoidStateType.Physics or state == Enum.HumanoidStateType.PlatformStanding or state == Enum.HumanoidStateType.Ragdoll then
+        return true
+    end
+    
+    -- Cek ProximityPrompt Revive/Rescue di dalam karakter
+    for _, prompt in ipairs(char:GetDescendants()) do
+        if prompt:IsA("ProximityPrompt") then
+            local act = prompt.ActionText:lower()
+            if act:find("revive") or act:find("rescue") or act:find("help") or act:find("tolong") then
+                return true
+            end
+        end
+    end
+    
+    -- Cek atribut knocked/downed
+    if player:GetAttribute("Knocked") == true or player:GetAttribute("Downed") == true or 
+       player:GetAttribute("IsKnocked") == true or (char and char:GetAttribute("Knocked") == true) then
+        return true
+    end
+    
+    return false
+end
+
+-- Helper: Mengecek apakah player memiliki nyawa survivor aktif (number/bool/string)
 local function hasLives(player)
     local lives = getAttribute(player, "Lives")
     if lives == nil or lives == false or lives == 0 or lives == "0" or lives == "false" then
@@ -324,44 +377,113 @@ local function hasLives(player)
     return true
 end
 
+local function isWeaponName(name)
+    local ln = name:lower()
+    local weaponKeywords = {
+        "knife", "pisau", "weapon", "blade", "claw", "scythe", "slasher", 
+        "axe", "bat", "sword", "hammer", "machete", "cleaver", "sickle", 
+        "dagg", "sharp", "cutter", "punch", "attack", "strike", "hit", "monster", "nightmare"
+    }
+    for _, word in ipairs(weaponKeywords) do
+        if ln:find(word) then
+            -- Pastikan bukan item survivor
+            local survivorKeywords = {"soda", "pill", "coin", "card", "tape", "key", "drink", "medkit", "heart", "health"}
+            for _, surv in ipairs(survivorKeywords) do
+                if ln:find(surv) then
+                    return false
+                end
+            end
+            return true
+        end
+    end
+    return false
+end
+
+-- Helper: Mendeteksi apakah player membawa pisau/senjata (di tangan atau di dalam tas/backpack)
+local function hasWeapon(player)
+    if not player then return false end
+    
+    -- 1. Cek di Character (Saat pisau/senjata di-equip)
+    local char = player.Character
+    if char then
+        for _, child in ipairs(char:GetDescendants()) do
+            if child:IsA("Tool") then
+                if isWeaponName(child.Name) then
+                    return true
+                end
+            elseif child:IsA("BasePart") or child:IsA("Model") then
+                if isWeaponName(child.Name) then
+                    return true
+                end
+            end
+        end
+    end
+    
+    -- 2. Cek di Backpack (Saat pisau/senjata di-unequip)
+    local bp = player:FindFirstChild("Backpack")
+    if bp then
+        for _, child in ipairs(bp:GetChildren()) do
+            if child:IsA("Tool") then
+                if isWeaponName(child.Name) then
+                    return true
+                end
+            end
+        end
+    end
+    
+    return false
+end
+
 local function checkIfKiller(player)
     if not player then return false end
     if player == LocalPlayer then return false end
 
-    -- 1. Deteksi apakah ada ronde pertandingan yang sedang berjalan aktif
-    local isMatchActive = false
-    for _, p in ipairs(Players:GetPlayers()) do
-        if hasLives(p) then
-            isMatchActive = true
-            break
+    -- DEBUG ANTI-SPAM: Cetak seluruh isi tubuh player ke F9 Console sekali saja saat terdeteksi
+    local char = player.Character
+    if char then
+        _G.loggedKillerChildren = _G.loggedKillerChildren or {}
+        if not _G.loggedKillerChildren[player.Name] then
+            _G.loggedKillerChildren[player.Name] = true
+            print("[DEBUG] === ISI TUBUH PLAYER (" .. player.Name .. ") ===")
+            for _, child in ipairs(char:GetChildren()) do
+                print("  - [" .. child.ClassName .. "] " .. child.Name)
+            end
+            print("[DEBUG] ==============================================")
         end
     end
 
-    if isMatchActive then
-        -- 2. Di dalam Match: Siapa pun yang TIDAK memiliki nyawa survivor aktif adalah Killer
-        if not hasLives(player) then
-            return true
-        end
-    else
-        -- 3. Di luar Match (Lobby): Deteksi berdasarkan atribut SelectedMonster atau nama model
-        for _, attrName in ipairs({"SelectedMonster", "Monster", "MonsterType", "Role", "Killer"}) do
-            local val = getAttribute(player, attrName)
-            if val then
-                local s = tostring(val):lower()
-                if CONFIRMED_KILLERS[s] then
-                    return true
-                end
-            end
-        end
+    -- 1. Pengecualian Mutlak: Survivor yang sedang knocked tidak pernah menjadi Killer
+    if isAnyPlayerKnocked(player) then
+        return false
+    end
 
-        local char = player.Character
-        if char then
-            local charName = char.Name:lower()
-            for kName in pairs(CONFIRMED_KILLERS) do
-                if charName:find(kName) then
-                    return true
-                end
+    -- 2. Deteksi Utama: Senjata di tangan / tas
+    if hasWeapon(player) then
+        return true
+    end
+
+    -- 3. Deteksi Sensor Fisik: Lampu Merah / Vision Cone (Red Stain)
+    if char and hasRedLightOrStain(char) then
+        return true
+    end
+
+    -- 4. Deteksi Atribut/Metadata Peran Aktif
+    for _, attrName in ipairs({"SelectedMonster", "Monster", "MonsterType", "Role", "Killer"}) do
+        local val = getAttribute(player, attrName)
+        if val ~= nil then
+            local s = tostring(val):lower()
+            if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" and s ~= "survivor" and s ~= "child" and s ~= "children" then
+                return true
             end
+        end
+    end
+
+    -- 5. Deteksi Tim (jika didukung game)
+    local team = player.Team
+    if team then
+        local tn = team.Name:lower()
+        if tn:find("nightmare") or tn:find("monster") or tn:find("killer") or tn:find("hunter") or tn:find("slasher") then
+            return true
         end
     end
 
@@ -1500,24 +1622,39 @@ local function espUpdateLoop()
                 local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")
                 
                 if hum and root and not Players:GetPlayerFromCharacter(obj) then
+                    -- DEBUG BOT ANTI-SPAM: Cetak isi tubuh Bot/NPC Killer ke F9 Console sekali saja
+                    _G.loggedBotChildren = _G.loggedBotChildren or {}
+                    if not _G.loggedBotChildren[obj.Name] then
+                        _G.loggedBotChildren[obj.Name] = true
+                        print("[DEBUG] === ISI NPC/BOT (" .. obj.Name .. ") ===")
+                        for _, child in ipairs(obj:GetChildren()) do
+                            print("  - [" .. child.ClassName .. "] " .. child.Name)
+                        end
+                        print("[DEBUG] ======================================")
+                    end
+
                     local oName = obj.Name:lower()
                     local isBotKiller = false
                     
-                    -- Lacak senjata killer bot di descendants model
-                    local hasWeapon = false
+                    -- Cek kepemilikan senjata di seluruh bagian tubuh Bot
+                    local botHasWeapon = false
                     for _, child in ipairs(obj:GetDescendants()) do
-                        if child:IsA("BasePart") or child:IsA("Model") then
-                            local tName = child.Name:lower()
-                            if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") or tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or tName:find("sickle") then
-                                hasWeapon = true
+                        if child:IsA("BasePart") or child:IsA("Model") or child:IsA("Tool") then
+                            if isWeaponName(child.Name) then
+                                botHasWeapon = true
                                 break
                             end
                         end
                     end
                     
+                    -- Cek Anatomi Kaki (Bot hitam default melayang tidak punya kaki)
+                    local hasLegs = obj:FindFirstChild("Left Leg") or obj:FindFirstChild("Right Leg") or 
+                                    obj:FindFirstChild("LeftUpperLeg") or obj:FindFirstChild("Left Lower Leg")
+                    
                     if oName:find("nightmare") or oName:find("monster") or oName:find("carnivore") or
                        oName:find("phantom") or oName:find("tarantula") or oName:find("spider") or
-                       oName:find("slasher") or oName:find("hunter") or hasRedLightOrStain(obj) or hasWeapon then
+                       oName:find("slasher") or oName:find("hunter") or hasRedLightOrStain(obj) or 
+                       botHasWeapon or (not hasLegs) then
                         isBotKiller = true
                     end
                     

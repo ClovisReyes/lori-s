@@ -347,11 +347,6 @@ local function checkIfKiller(player)
         if CONFIRMED_KILLERS[charName] then
             return true
         end
-
-        -- 4. Fallback Sensor Lampu Merah Fisik (antisipasi killer baru)
-        if hasRedLightOrStain(char) then
-            return true
-        end
     end
 
     return false

@@ -689,9 +689,22 @@ CreateToggle(FarmCard, "Auto Coin Farm (Teleport)", UDim2.new(0, 10, 0, 35), fal
     end
 end)
 
--- Fitur 1.5: Auto Skill Check Versi 4.3 (Presisi Tinggi, Multi-Metode Paralel & Hemat CPU Adaptif)
+-- Fitur 1.5: Auto Skill Check Versi 4.4 (Presisi Tinggi, Koreksi Topbar, Multi-Metode Paralel & Hemat CPU Adaptif)
 local isAutoSkillCheck = false
 local function autoSkillCheck()
+    -- Helper Notifikasi Layar Game (StarterGui)
+    local function notify(title, text, duration)
+        pcall(function()
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = title,
+                Text = text,
+                Duration = duration or 3
+            })
+        end)
+    end
+    
+    notify("Helper QTE", "Auto Skill Check Aktif!", 3)
+    
     task.spawn(function()
         local justPressed = {}
         local guiOpenedTime = {}
@@ -721,6 +734,9 @@ local function autoSkillCheck()
                 
                 if not guiOpenedTime[guiKey] then
                     guiOpenedTime[guiKey] = os.clock()
+                    if activeName == "barminigame" then
+                        notify("Helper QTE", "Minigame Kaset Dimulai!", 2)
+                    end
                 end
                 
                 local function isGuiVisible(obj)
@@ -734,46 +750,42 @@ local function autoSkillCheck()
                     return not (layer and not layer.Enabled)
                 end
                 
-                -- Helper klik button (isSilent=true untuk koin koin, isSilent=false untuk kaset agar multi-klik paralel murni)
+                -- Helper klik button (isSilent=true untuk koin koin, isSilent=false untuk kaset agar menggunakan raw input fisik)
                 local function clickBtn(btn, isSilent)
                     if not btn then return end
                     task.spawn(function()
-                        -- 1. Selalu jalankan klik virtual terlebih dahulu (sangat instan & bagus untuk Android/PC)
-                        local virtualSuccess = false
-                        if firesignal then
-                            pcall(function() btn:Activate() end)
-                            pcall(function() firesignal(btn.MouseButton1Down) end)
-                            pcall(function() firesignal(btn.MouseButton1Up) end)
-                            pcall(function() firesignal(btn.MouseButton1Click) end)
-                            pcall(function() firesignal(btn.Activated) end)
-                            virtualSuccess = true
-                        end
-                        if getconnections and not virtualSuccess then
-                            pcall(function() btn:Activate() end)
-                            for _, event in ipairs({btn.MouseButton1Down, btn.MouseButton1Up, btn.MouseButton1Click, btn.Activated}) do
-                                for _, c in ipairs(getconnections(event)) do
-                                    pcall(function() c:Fire() end)
+                        if isSilent then
+                            -- Coin QTE: Silent, virtual-only click to keep it camera-free
+                            local virtualSuccess = false
+                            if firesignal then
+                                pcall(function() firesignal(btn.MouseButton1Click) end)
+                                pcall(function() firesignal(btn.Activated) end)
+                                virtualSuccess = true
+                            elseif getconnections then
+                                for _, event in ipairs({btn.MouseButton1Click, btn.Activated}) do
+                                    for _, c in ipairs(getconnections(event)) do
+                                        pcall(function() c:Fire() end)
+                                    end
                                 end
+                                virtualSuccess = true
                             end
-                            virtualSuccess = true
+                            if not virtualSuccess then
+                                pcall(function() btn:Activate() end)
+                            end
+                        else
+                            -- Cassette QTE: Physical single hardware click/tap (Bypasses custom UIS and doesn't double-click)
+                            local guiInset = game:GetService("GuiService"):GetGuiInset()
+                            local bp = btn.AbsolutePosition
+                            local bs = btn.AbsoluteSize
+                            local cx = bp.X + bs.X / 2
+                            local cy = bp.Y + bs.Y / 2 + guiInset.Y
+                            
+                            pcall(function()
+                                VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                                task.wait(0.01)
+                                VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                            end)
                         end
-                        
-                        -- Jika silent dituntut (untuk koin), jangan jalankan klik fisik agar tidak curi kamera
-                        if isSilent then return end
-                        
-                        -- 2. Untuk PC & Android Raw Input: Jalankan juga klik fisik asli via VirtualInputManager!
-                        -- Diberi jeda 0.01 detik agar tidak bentrok dengan virtual click
-                        task.wait(0.01)
-                        pcall(function() btn:Activate() end)
-                        local bp = btn.AbsolutePosition
-                        local bs = btn.AbsoluteSize
-                        local cx = bp.X + bs.X / 2
-                        local cy = bp.Y + bs.Y / 2
-                        pcall(function()
-                            VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
-                            task.wait(0.01)
-                            VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
-                        end)
                     end)
                 end
                 
@@ -782,20 +794,20 @@ local function autoSkillCheck()
                     local tape = nil
                     local skillBtn = nil
                     
-                    -- PENTING: Cari jarum ("bar") & kaset ("Goal") di descendants tanpa isGuiVisible
-                    -- agar 100% mendeteksi elemen meskipun berada di dalam kontainer tersembunyi
+                    -- PENTING: Cari jarum ("bar") & kaset ("Goal") di descendants yang VISIBLE saja!
+                    -- Ini menjamin kita tidak klik prematur sebelum kasetnya muncul di layar.
                     for _, d in ipairs(activeGui:GetDescendants()) do
-                        if d:IsA("GuiObject") then
-                            local dName = d.Name
-                            if dName == "bar" then
+                        if d:IsA("GuiObject") and isGuiVisible(d) then
+                            local dNameLower = d.Name:lower()
+                            if dNameLower == "bar" then
                                 if needle == nil or d.AbsoluteSize.X < needle.AbsoluteSize.X then
                                     needle = d
                                 end
                             end
-                            if dName == "Goal" then
+                            if dNameLower == "goal" then
                                 tape = d
                             end
-                            if dName == "SkillCheck" then
+                            if dNameLower == "skillcheck" then
                                 skillBtn = d
                             end
                         end
@@ -803,7 +815,7 @@ local function autoSkillCheck()
                     
                     if not skillBtn then
                         for _, d in ipairs(activeGui:GetDescendants()) do
-                            if d:IsA("TextButton") or d:IsA("ImageButton") then
+                            if (d:IsA("TextButton") or d:IsA("ImageButton")) and isGuiVisible(d) then
                                 local dName = d.Name:lower()
                                 if dName:find("skill") or dName:find("check") or dName:find("button") then
                                     skillBtn = d
@@ -816,8 +828,10 @@ local function autoSkillCheck()
                     -- Cetak debug log ke F9 console sekali saat QTE muncul agar user bisa memantau
                     if not justPressed[guiKey] and (not _G.lastQteLog or os.clock() - _G.lastQteLog > 5) then
                         _G.lastQteLog = os.clock()
-                        print(string.format("[Helper QTE] Kaset Aktif! Jarum=%s, Kaset=%s, Tombol=%s", 
-                            tostring(needle ~= nil), tostring(tape ~= nil), tostring(skillBtn ~= nil)))
+                        local debugStr = string.format("[Helper QTE] Kaset Aktif! Jarum=%s, Kaset=%s, Tombol=%s", 
+                            tostring(needle ~= nil), tostring(tape ~= nil), tostring(skillBtn ~= nil))
+                        print(debugStr)
+                        notify("Helper QTE", debugStr, 3)
                     end
                     
                     if needle and tape and skillBtn and not justPressed[guiKey] then
@@ -829,7 +843,8 @@ local function autoSkillCheck()
                             -- Klik tepat di area kaset (100% presisi tanpa pre-fire)
                             if needleCenter >= tapeLeft and needleCenter <= tapeRight then
                                 justPressed[guiKey] = true
-                                clickBtn(skillBtn, false) -- Jalankan multi-klik kaset paralel
+                                notify("Helper QTE", "Memicu Klik Kaset!", 1.5)
+                                clickBtn(skillBtn, false) -- Klik fisik tunggal presisi
                                 task.delay(0.5, function()
                                     justPressed[guiKey] = false
                                 end)
@@ -1552,21 +1567,23 @@ local function findKillerRoot()
     
     -- 2. Cari Killer sebagai NPC/Bot di seluruh Workspace
     -- Kita scan semua Model di Workspace yang memiliki Humanoid dan HumanoidRootPart
+    -- PENTING: HumanoidRootPart tidak boleh Anchored agar kita mengabaikan boneka/dekorasi kasur hiasan!
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("Model") and obj ~= LocalPlayer.Character then
             local hum = obj:FindFirstChildOfClass("Humanoid")
             local root = obj:FindFirstChild("HumanoidRootPart")
-            if hum and root then
+            if hum and root and not root.Anchored then
                 local oName = obj.Name:lower()
                 
                 -- Killer Bot harus memenuhi salah satu kriteria kuat ini
                 local isKillerCandidate = false
                 
-                -- Kriteria A: Nama model mengandung kata kunci killer/monster spesifik
+                -- Kriteria A: Nama model mengandung kata kunci killer/monster spesifik (termasuk Girl/Boy)
                 if oName:find("nightmare") or oName:find("killer") or oName:find("monster") or 
                    oName:find("carnivore") or oName:find("phantom") or oName:find("tarantula") or 
                    oName:find("spider") or oName:find("slasher") or 
-                   oName:find("chaser") or oName:find("hunter") then
+                   oName:find("chaser") or oName:find("hunter") or
+                   oName:find("girl") or oName:find("boy") then
                     isKillerCandidate = true
                 end
                 
@@ -1592,7 +1609,7 @@ local function findKillerRoot()
                 end
                 
                 if isKillerCandidate then
-                    -- Singkirkan dekorasi/objek umum yang bukan killer (seperti anak tidur di ranjang)
+                    -- Singkirkan dekorasi/objek umum yang bukan killer
                     if not (oName:find("dummy") or oName:find("mannequin") or oName:find("npc") or 
                             oName:find("anchor") or oName:find("shop") or oName:find("avatar") or
                             oName:find("tv") or oName:find("television") or oName:find("locker") or
@@ -1631,11 +1648,11 @@ local function findKillerRoot()
         end
     end
     
-    -- 4. Fallback Terakhir: Cari model apapun yang memiliki Red Light/Stain di Workspace
+    -- 4. Fallback Terakhir: Cari model apapun yang memiliki Red Light/Stain di Workspace (yang tidak Anchored!)
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("Model") and obj ~= LocalPlayer.Character then
             local root = obj:FindFirstChild("HumanoidRootPart")
-            if root and hasRedLightOrStain(obj) then
+            if root and not root.Anchored and hasRedLightOrStain(obj) then
                 if debugLog then
                     print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Fallback Red Light): " .. obj.Name)
                 end
@@ -1650,7 +1667,7 @@ local function findKillerRoot()
     return nil
 end
 
--- Loop Auto Follow Killer (Mengikuti Killer Selamanya Saat Aktif)
+-- Loop Auto Follow Killer (Mengikuti Killer Selamanya Saat Aktif & Downed)
 local isAutoFollowKiller = false
 local autoFollowConn = nil
 local slipAwayPaused = false -- Pause sementara saat user tekan SLIP AWAY
@@ -1701,22 +1718,33 @@ local function autoFollowKillerLoop()
             return
         end
         
-        local killerRoot = findKillerRoot()
         local char = LocalPlayer.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         
-        if root and killerRoot then
-            -- Nempel tepat di belakang killer, 3 stud di atas dan 2 stud di belakang (mengikuti kemana pun killer pergi)
-            if root.Anchored then
-                root.Anchored = false
+        if root then
+            -- Hanya berteleportasi jika kita knocked/downed (sehat = bisa main biasa)
+            if not isPlayerKnocked() then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum and hum.PlatformStand then
+                    hum.PlatformStand = false
+                end
+                return
             end
             
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum and not hum.PlatformStand then
-                hum.PlatformStand = true
+            local killerRoot = findKillerRoot()
+            if killerRoot then
+                if root.Anchored then
+                    root.Anchored = false
+                end
+                
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum and not hum.PlatformStand then
+                    hum.PlatformStand = true
+                end
+                
+                -- Teleport ke atas killer (3 stud ke atas, 2 stud di belakang)
+                root.CFrame = killerRoot.CFrame * CFrame.new(0, 3, 2)
             end
-            
-            root.CFrame = killerRoot.CFrame * CFrame.new(0, 3, 2)
         end
     end)
 end

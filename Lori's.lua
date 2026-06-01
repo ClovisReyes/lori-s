@@ -315,22 +315,31 @@ local CONFIRMED_KILLERS = {
     ["tarantula"] = true
 }
 
+-- Helper: Mengecek apakah player memiliki nyawa survivor aktif (mendukung number, bool, string, nil)
+local function hasLives(player)
+    local lives = getAttribute(player, "Lives")
+    if lives == nil or lives == false or lives == 0 or lives == "0" or lives == "false" then
+        return false
+    end
+    return true
+end
+
 local function checkIfKiller(player)
     if not player then return false end
     if player == LocalPlayer then return false end
 
-    -- 1. Deteksi apakah ada ronde pertandingan yang sedang berjalan aktif (Lives ~= nil)
+    -- 1. Deteksi apakah ada ronde pertandingan yang sedang berjalan aktif
     local isMatchActive = false
     for _, p in ipairs(Players:GetPlayers()) do
-        if getAttribute(p, "Lives") ~= nil then
+        if hasLives(p) then
             isMatchActive = true
             break
         end
     end
 
     if isMatchActive then
-        -- 2. Di dalam Match: Siapa pun yang TIDAK memiliki atribut Lives secara mutlak adalah Killer
-        if getAttribute(player, "Lives") == nil then
+        -- 2. Di dalam Match: Siapa pun yang TIDAK memiliki nyawa survivor aktif adalah Killer
+        if not hasLives(player) then
             return true
         end
     else

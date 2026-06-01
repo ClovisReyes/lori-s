@@ -800,23 +800,20 @@ local function autoSkillCheck()
                         if d:IsA("GuiObject") and isGuiVisible(d) then
                             local dName = d.Name
                             
-                            -- 1. Cari Jarum (Frame tipis bernama "bar" yang bergerak)
-                            if dName == "bar" and d:IsA("Frame") then
-                                local currentX = d.AbsolutePosition.X
-                                local lastX = lastNeedleX[d]
-                                if lastX and math.abs(currentX - lastX) > 0.05 then
+                            -- 1. Cari Jarum (Frame bernama "bar" yang bergerak)
+                            if dName == "bar" then
+                                if needle == nil or d.AbsoluteSize.X < needle.AbsoluteSize.X then
                                     needle = d
                                 end
-                                lastNeedleX[d] = currentX
                             end
                             
-                            -- 2. Cari Tape / Zona Kaset (ImageLabel bernama "Goal" atau "img" berukuran kaset)
-                            if dName == "Goal" and d:IsA("ImageLabel") then
+                            -- 2. Cari Tape / Zona Kaset (Goal atau img berukuran kaset)
+                            if dName == "Goal" then
                                 tape = d
-                            elseif dName == "img" and d:IsA("ImageLabel") then
+                            elseif dName == "img" then
                                 local sz = d.AbsoluteSize
                                 local pos = d.AbsolutePosition
-                                if sz.X >= 45 and sz.X <= 120 and pos.X > 330 then
+                                if sz.X >= 40 and sz.X <= 150 and pos.X > 200 then
                                     if tape == nil or pos.X > tape.AbsolutePosition.X then
                                         tape = d
                                     end
@@ -824,25 +821,13 @@ local function autoSkillCheck()
                             end
                             
                             -- 3. Cari Tombol Klik
-                            if dName == "SkillCheck" and (d:IsA("TextButton") or d:IsA("ImageButton")) then
+                            if dName == "SkillCheck" then
                                 skillBtn = d
                             end
                         end
                     end
                     
-                    -- Fallback 1: Jika needle belum ketemu, cari Frame "bar" dengan ukuran Y terkecil
-                    if not needle then
-                        for _, d in ipairs(activeGui:GetDescendants()) do
-                            if d.Name == "bar" and d:IsA("Frame") and isGuiVisible(d) then
-                                local sz = d.AbsoluteSize
-                                if sz.Y < 50 then
-                                    needle = d
-                                end
-                            end
-                        end
-                    end
-                    
-                    -- Fallback 2: Jika skillBtn belum ketemu, cari TextButton/ImageButton yang visible
+                    -- Fallback: Jika skillBtn belum ketemu, cari TextButton/ImageButton yang visible
                     if not skillBtn then
                         for _, d in ipairs(activeGui:GetDescendants()) do
                             if (d:IsA("TextButton") or d:IsA("ImageButton")) and isGuiVisible(d) then
@@ -855,20 +840,15 @@ local function autoSkillCheck()
                         end
                     end
                     
-                    -- Deteksi overlap presisi tinggi di tengah zona kaset
+                    -- Deteksi overlap instan di seluruh area kaset (100% presisi tanpa pre-fire)
                     if needle and tape and skillBtn and not justPressed[guiKey] then
                         if needle.AbsoluteSize.X > 0 and tape.AbsoluteSize.X > 0 and tape.AbsolutePosition.X > 0 and needle.AbsolutePosition.X > 0 then
                             local needleCenter = needle.AbsolutePosition.X + needle.AbsoluteSize.X / 2
                             local tapeLeft     = tape.AbsolutePosition.X
                             local tapeRight    = tapeLeft + tape.AbsoluteSize.X
-                            local tapeWidth    = tape.AbsoluteSize.X
                             
-                            -- Gunakan margin aman di kiri dan kanan (15% dari lebar kaset) agar klik jatuh tepat di dalam kaset
-                            local safetyMargin = math.max(4, math.floor(tapeWidth * 0.15))
-                            local minX = tapeLeft + safetyMargin
-                            local maxX = tapeRight - safetyMargin
-                            
-                            if needleCenter >= minX and needleCenter <= maxX then
+                            -- Klik tepat di area kaset (tanpa margin berlebih untuk menghindari kegagalan karena frame-skip)
+                            if needleCenter >= tapeLeft and needleCenter <= tapeRight then
                                 justPressed[guiKey] = true
                                 clickBtn(skillBtn)
                                 
@@ -1545,7 +1525,6 @@ end
 
 
 
-local lastFollowDebugTime = 0
 -- Helper: Cari Root Part Milik Killer (Mendukung Player & NPC/Bot Monster di Workspace)
 local function findKillerRoot()
     local debugLog = (os.clock() - lastFollowDebugTime > 3) -- batasi print setiap 3 detik agar tidak spam
@@ -1553,37 +1532,64 @@ local function findKillerRoot()
         lastFollowDebugTime = os.clock()
     end
     
-    -- 1. Cari Killer sebagai Player (gunakan checkIfKiller)
+    -- 1. Cari Killer sebagai Player
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and checkIfKiller(p) then
-            local char = p.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            if root then 
-                if debugLog then
-                    print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Player): " .. p.Name .. " (Model: " .. tostring(char) .. ")")
+        if p ~= LocalPlayer then
+            local isKiller = false
+            
+            -- Cek Tim (Children = Survivor, Nightmare = Killer)
+            if p.Team then
+                local tName = p.Team.Name:lower()
+                if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("lori") then
+                    isKiller = true
+                elseif not (tName:find("child") or tName:find("survivor") or tName:find("lobby") or tName:find("spectator")) then
+                    if LocalPlayer.Team then
+                        local lpTeam = LocalPlayer.Team.Name:lower()
+                        if lpTeam:find("child") or lpTeam:find("survivor") then
+                            isKiller = true
+                        end
+                    end
                 end
-                return root 
+            end
+            
+            -- Cek Atribut Role / IsKiller
+            if not isKiller then
+                if p:GetAttribute("Role") == "Nightmare" or p:GetAttribute("IsKiller") == true or p:GetAttribute("IsNightmare") == true or p:GetAttribute("Role") == "Killer" then
+                    isKiller = true
+                end
+            end
+            
+            -- Cek Karakter Model (Red Light / Senjata / Nama Model)
+            local char = p.Character
+            if not isKiller and char then
+                local cName = char.Name:lower()
+                if cName:find("nightmare") or cName:find("killer") or cName:find("slasher") or cName:find("lori") or hasRedLightOrStain(char) then
+                    isKiller = true
+                end
+            end
+            
+            if isKiller and char then
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if root then
+                    if debugLog then
+                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Player): " .. p.Name)
+                    end
+                    return root
+                end
             end
         end
     end
     
-    -- 2. Cari Killer sebagai NPC/Bot di seluruh Workspace (Mencari Model dengan Humanoid yang bukan player)
-    -- Ini adalah metode paling cerdas & 100% akurat untuk melacak killer bot di Lori's Nightmare!
-    local playerChars = {}
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Character then
-            playerChars[p.Character] = true
-        end
-    end
-    
+    -- 2. Cari Killer sebagai NPC/Bot di seluruh Workspace
+    -- Kita scan semua Model di Workspace yang memiliki Humanoid dan HumanoidRootPart
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") and obj ~= LocalPlayer.Character and not playerChars[obj] then
+        if obj:IsA("Model") and obj ~= LocalPlayer.Character then
             local hum = obj:FindFirstChildOfClass("Humanoid")
             local root = obj:FindFirstChild("HumanoidRootPart")
             if hum and root then
                 local oName = obj.Name:lower()
                 
-                -- Killer Bot harus memenuhi salah satu kriteria kuat ini agar tidak salah mendeteksi anak tidur/dummy:
+                -- Killer Bot harus memenuhi salah satu kriteria kuat ini
                 local isKillerCandidate = false
                 
                 -- Kriteria A: Nama model mengandung kata kunci killer/monster spesifik
@@ -1595,7 +1601,7 @@ local function findKillerRoot()
                 end
                 
                 -- Kriteria B: Memiliki atribut killer bawaan game
-                if obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") or obj:GetAttribute("Role") == "Nightmare" then
+                if obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") or obj:GetAttribute("Role") == "Nightmare" or obj:GetAttribute("Role") == "Killer" then
                     isKillerCandidate = true
                 end
                 
@@ -1616,14 +1622,14 @@ local function findKillerRoot()
                 end
                 
                 if isKillerCandidate then
-                    -- Singkirkan dekorasi/objek umum yang bukan killer
+                    -- Singkirkan dekorasi/objek umum yang bukan killer (seperti anak tidur di ranjang)
                     if not (oName:find("dummy") or oName:find("mannequin") or oName:find("npc") or 
                             oName:find("anchor") or oName:find("shop") or oName:find("avatar") or
                             oName:find("tv") or oName:find("television") or oName:find("locker") or
                             oName:find("generator") or oName:find("cabinet") or oName:find("gate") or
                             oName:find("door") or oName:find("lobby")) then
                         if debugLog then
-                            print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer Bot (Model Terverifikasi): " .. obj.Name)
+                            print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer Bot: " .. obj.Name)
                         end
                         return root
                     end
@@ -1632,32 +1638,12 @@ local function findKillerRoot()
         end
     end
     
-    -- 3. Fallback: Cari Killer berdasarkan model name / atribut / red stain jika metode di atas terlewati
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") and obj ~= LocalPlayer.Character then
-            local oName = obj.Name:lower()
-            if oName:find("nightmare") or oName:find("killer") or obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") or
-               oName:find("carnivore") or oName:find("phantom") or oName:find("tarantula") or oName:find("spider") or
-               oName:find("lori") or oName:find("slasher") or oName:find("chaser") or oName:find("hunter") or
-               hasRedLightOrStain(obj) then
-                local root = obj:FindFirstChild("HumanoidRootPart")
-                if root then 
-                    if debugLog then
-                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Fallback Bot Model Name): " .. obj.Name)
-                    end
-                    return root 
-                end
-            end
-        end
-    end
-    
-    -- 4. Fallback WalkSpeed: killer biasanya lebih cepat (>20) dari survivor (12-16)
+    -- 3. Fallback WalkSpeed: killer biasanya lebih cepat (>20) dari survivor (12-16)
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character then
             local pHum = p.Character:FindFirstChildOfClass("Humanoid")
             local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
             if pHum and pRoot and pHum.WalkSpeed > 20 then
-                -- Pastikan bukan survivor berdasarkan tim (menghindari false-positive)
                 local isSurvivor = false
                 if p.Team then
                     local tName = p.Team.Name:lower()
@@ -1667,10 +1653,23 @@ local function findKillerRoot()
                 end
                 if not isSurvivor then
                     if debugLog then
-                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Fallback WalkSpeed > 20): " .. p.Name)
+                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (WalkSpeed Fallback): " .. p.Name)
                     end
                     return pRoot
                 end
+            end
+        end
+    end
+    
+    -- 4. Fallback Terakhir: Cari model apapun yang memiliki Red Light/Stain di Workspace
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+            local root = obj:FindFirstChild("HumanoidRootPart")
+            if root and hasRedLightOrStain(obj) then
+                if debugLog then
+                    print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Fallback Red Light): " .. obj.Name)
+                end
+                return root
             end
         end
     end
@@ -1681,13 +1680,12 @@ local function findKillerRoot()
     return nil
 end
 
--- Loop Auto Follow Killer saat Knocked
+-- Loop Auto Follow Killer (Mengikuti Killer Selamanya Saat Aktif)
 local isAutoFollowKiller = false
 local autoFollowConn = nil
 local slipAwayPaused = false -- Pause sementara saat user tekan SLIP AWAY
 
 local function autoFollowKillerLoop()
-    -- Hapus koneksi lama jika ada
     if autoFollowConn then
         autoFollowConn:Disconnect()
         autoFollowConn = nil
@@ -1709,7 +1707,7 @@ local function autoFollowKillerLoop()
                         hookedButtons[obj] = true
                         obj.MouseButton1Click:Connect(function()
                             slipAwayPaused = true
-                            -- Auto resume setelah 10 detik jika tidak mati lagi
+                            -- Auto resume setelah 10 detik
                             task.delay(10, function()
                                 slipAwayPaused = false
                             end)
@@ -1728,26 +1726,9 @@ local function autoFollowKillerLoop()
             return
         end
         
-        -- HANYA follow jika player sedang knocked (downed)
-        if not isPlayerKnocked() then
-            -- Kembalikan platform stand jika sebelumnya aktif
-            local char = LocalPlayer.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if hum and hum.PlatformStand then
-                hum.PlatformStand = false
-            end
-            return
-        end
-        
-        -- Jika slip away aktif, resume otomatis saat mati/downed lagi
+        -- Jika slip away aktif, jangan teleport
         if slipAwayPaused then
-            -- Re-engage jika player sudah mati lagi (health <= 1)
-            local char = LocalPlayer.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if hum and hum.Health <= 1 then
-                slipAwayPaused = false -- Mati lagi → nempel ke killer lagi
-            end
-            return -- Jangan follow selama slip away
+            return
         end
         
         local killerRoot = findKillerRoot()
@@ -1769,6 +1750,7 @@ local function autoFollowKillerLoop()
         end
     end)
 end
+
 
 -- Bypass & Movement Physics Card (No-clip & Inf Jump)
 local BypassCard = CreateCard(PlayerTab, "Bypass Mechanics", 135)

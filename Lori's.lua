@@ -1980,14 +1980,34 @@ local function autoFollowKillerLoop()
                             
                             pcall(function()
                                 local char = LocalPlayer.Character
+                                
+                                -- Hancurkan paksa seluruh carry-weld eksternal di workspace yang membelenggu karakter kita
+                                if char then
+                                    for _, child in ipairs(workspace:GetDescendants()) do
+                                        if child:IsA("Weld") or child:IsA("Motor6D") or child:IsA("WeldConstraint") then
+                                            local p0 = child.Part0
+                                            local p1 = child.Part1
+                                            if p0 and p1 then
+                                                if p0:IsDescendantOf(char) or p1:IsDescendantOf(char) then
+                                                    -- Jangan hancurkan joint internal milik karakter kita sendiri
+                                                    if not (p0:IsDescendantOf(char) and p1:IsDescendantOf(char)) then
+                                                        pcall(function() child:Destroy() end)
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                                
                                 local hum = char and char:FindFirstChildOfClass("Humanoid")
                                 if hum then
                                     hum.PlatformStand = false
                                 end
+                                
                                 local root = char and char:FindFirstChild("HumanoidRootPart")
                                 if root then
                                     root.Anchored = false
-                                    -- Teleportasi 12 stud di belakang killer agar langsung terlepas secara fisik
+                                    -- Teleportasi instan 12 stud di belakang Killer setelah terlepas secara fisik
                                     local killerRoot = findKillerRoot()
                                     if killerRoot then
                                         root.CFrame = killerRoot.CFrame * CFrame.new(0, 4, 12)
@@ -2008,6 +2028,42 @@ local function autoFollowKillerLoop()
         end
     end)
     
+    -- Helper: Deteksi apakah karakter kita sedang di-weld (di-grab/carry) oleh objek luar
+    local function isPlayerWelded(myChar, kRoot)
+        if not myChar then return false end
+        local kChar = kRoot and kRoot.Parent
+        
+        -- Scan joints di karakter kita sendiri
+        for _, child in ipairs(myChar:GetDescendants()) do
+            if child:IsA("Weld") or child:IsA("Motor6D") or child:IsA("WeldConstraint") then
+                local p0 = child.Part0
+                local p1 = child.Part1
+                if p0 and p1 then
+                    if not p0:IsDescendantOf(myChar) or not p1:IsDescendantOf(myChar) then
+                        return true
+                    end
+                end
+            end
+        end
+        
+        -- Scan joints di karakter killer
+        if kChar then
+            for _, child in ipairs(kChar:GetDescendants()) do
+                if child:IsA("Weld") or child:IsA("Motor6D") or child:IsA("WeldConstraint") then
+                    local p0 = child.Part0
+                    local p1 = child.Part1
+                    if p0 and p1 then
+                        if p0:IsDescendantOf(myChar) or p1:IsDescendantOf(myChar) then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+        
+        return false
+    end
+
     -- Gunakan Heartbeat agar update setiap frame (sangat smooth & tidak bisa dilewati)
     autoFollowConn = RunService.Heartbeat:Connect(function()
         if not isAutoFollowKiller then
@@ -2037,11 +2093,11 @@ local function autoFollowKillerLoop()
 
             local killerRoot = findKillerRoot()
             if killerRoot then
-                local dist = (root.Position - killerRoot.Position).Magnitude
+                -- Cek apakah kita sedang digendong (welded) oleh Killer secara fisik
+                local welded = false
+                pcall(function() welded = isPlayerWelded(char, killerRoot) end)
                 
-                -- Hanya berteleportasi jika jarak ke killer > 6 stud.
-                -- Jika sudah dekat (<= 6 stud), biarkan menempel secara natural atau terbawa carry weld game tanpa glitch!
-                if dist > 6 then
+                if not welded then
                     if root.Anchored then
                         root.Anchored = false
                     end
@@ -2051,7 +2107,7 @@ local function autoFollowKillerLoop()
                         hum.PlatformStand = true
                     end
                     
-                    -- Teleport ke atas killer (3 stud ke atas, 2 stud di belakang)
+                    -- Teleportasi presisi & kontinu (nempel erat 3 stud ke atas, 2 stud di belakang Killer)
                     root.CFrame = killerRoot.CFrame * CFrame.new(0, 3, 2)
                 end
             end

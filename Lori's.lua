@@ -302,11 +302,11 @@ local function checkIfKiller(player)
             end
         end
 
-        -- Cek senjata killer
+        -- Cek senjata killer (Mendukung BasePart & Model kustom, bukan cuma Tool/Weapon instance)
         for _, child in ipairs(char:GetDescendants()) do
-            if child:IsA("Tool") or child:IsA("Weapon") then
+            if child:IsA("BasePart") or child:IsA("Model") then
                 local tName = child.Name:lower()
-                if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") then
+                if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") or tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or tName:find("sickle") then
                     return true
                 end
             end
@@ -335,37 +335,18 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 4. Fallback SelectedMonster (Hanya jika bukan survivor terbukti)
+    -- 4. Fallback SelectedMonster (Mencegah false-positive survivor lobi)
+    -- Di arena pertandingan aktif, Survivor SELALU memiliki nyawa (Lives >= 1), sedangkan Killer tidak punya Lives!
+    local hasLives = player:GetAttribute("Lives") ~= nil
     local sm = player:GetAttribute("SelectedMonster")
-    if sm ~= nil then
+    if sm ~= nil and not hasLives then
         local s = tostring(sm):lower()
         if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
-            -- Mencegah false-positive survivor lobi:
-            -- Di game ini, Killer aktif SELALU membawa senjata atau memancarkan red light / red stain di karakternya.
-            -- Jika player ini memiliki SelectedMonster lobi tapi tidak memancarkan tanda killer fisik sama sekali,
-            -- kita anggap dia survivor (kecuali dia di Tim Killer).
-            if char then
-                local hasKillerTraits = hasRedLightOrStain(char)
-                if not hasKillerTraits then
-                    -- Cari apakah ada senjata
-                    for _, child in ipairs(char:GetDescendants()) do
-                        if child:IsA("Tool") or child:IsA("Weapon") then
-                            local tName = child.Name:lower()
-                            if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") then
-                                hasKillerTraits = true
-                                break
-                            end
-                        end
-                    end
-                end
-                if not hasKillerTraits then
-                    return false -- Dia survivor lobi yang sedang bermain sebagai survivor
-                end
-            end
             return true
         end
     end
 
+    -- 5. Jika tidak ada bukti kuat lainnya, default ke false (survivor) untuk keamanan
     return false
 end
 

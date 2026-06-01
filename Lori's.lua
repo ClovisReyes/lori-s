@@ -689,7 +689,7 @@ CreateToggle(FarmCard, "Auto Coin Farm (Teleport)", UDim2.new(0, 10, 0, 35), fal
     end
 end)
 
--- Fitur 1.5: Auto Skill Check Versi 4.2 (Presisi Tinggi, Fisik Khusus Kaset & Hemat CPU Adaptif)
+-- Fitur 1.5: Auto Skill Check Versi 4.3 (Presisi Tinggi, Multi-Metode Paralel & Hemat CPU Adaptif)
 local isAutoSkillCheck = false
 local function autoSkillCheck()
     task.spawn(function()
@@ -734,33 +734,36 @@ local function autoSkillCheck()
                     return not (layer and not layer.Enabled)
                 end
                 
-                -- Helper klik button (isSilent=true untuk koin, isSilent=false untuk kaset agar menggunakan raw input fisik)
+                -- Helper klik button (isSilent=true untuk koin koin, isSilent=false untuk kaset agar multi-klik paralel murni)
                 local function clickBtn(btn, isSilent)
                     if not btn then return end
                     task.spawn(function()
-                        if isSilent then
-                            -- Mode Silent (Koin): Gunakan virtual clicks agar tidak mencuri fokus mouse/kamera di PC
-                            if firesignal then
-                                pcall(function() btn:Activate() end)
-                                pcall(function() firesignal(btn.MouseButton1Down) end)
-                                pcall(function() firesignal(btn.MouseButton1Up) end)
-                                pcall(function() firesignal(btn.MouseButton1Click) end)
-                                pcall(function() firesignal(btn.Activated) end)
-                                return
-                            end
-                            if getconnections then
-                                pcall(function() btn:Activate() end)
-                                for _, event in ipairs({btn.MouseButton1Down, btn.MouseButton1Up, btn.MouseButton1Click, btn.Activated}) do
-                                    for _, c in ipairs(getconnections(event)) do
-                                        pcall(function() c:Fire() end)
-                                    end
+                        -- 1. Selalu jalankan klik virtual terlebih dahulu (sangat instan & bagus untuk Android/PC)
+                        local virtualSuccess = false
+                        if firesignal then
+                            pcall(function() btn:Activate() end)
+                            pcall(function() firesignal(btn.MouseButton1Down) end)
+                            pcall(function() firesignal(btn.MouseButton1Up) end)
+                            pcall(function() firesignal(btn.MouseButton1Click) end)
+                            pcall(function() firesignal(btn.Activated) end)
+                            virtualSuccess = true
+                        end
+                        if getconnections and not virtualSuccess then
+                            pcall(function() btn:Activate() end)
+                            for _, event in ipairs({btn.MouseButton1Down, btn.MouseButton1Up, btn.MouseButton1Click, btn.Activated}) do
+                                for _, c in ipairs(getconnections(event)) do
+                                    pcall(function() c:Fire() end)
                                 end
-                                return
                             end
+                            virtualSuccess = true
                         end
                         
-                        -- Mode Fisik/Raw Input (Kaset): Selalu gunakan VirtualInputManager untuk klik fisik asli!
-                        -- Ini wajib agar game mendeteksi klik kiri (PC) / tap (Android) murni lewat raw UserInputService!
+                        -- Jika silent dituntut (untuk koin), jangan jalankan klik fisik agar tidak curi kamera
+                        if isSilent then return end
+                        
+                        -- 2. Untuk PC & Android Raw Input: Jalankan juga klik fisik asli via VirtualInputManager!
+                        -- Diberi jeda 0.01 detik agar tidak bentrok dengan virtual click
+                        task.wait(0.01)
                         pcall(function() btn:Activate() end)
                         local bp = btn.AbsolutePosition
                         local bs = btn.AbsoluteSize
@@ -779,8 +782,10 @@ local function autoSkillCheck()
                     local tape = nil
                     local skillBtn = nil
                     
+                    -- PENTING: Cari jarum ("bar") & kaset ("Goal") di descendants tanpa isGuiVisible
+                    -- agar 100% mendeteksi elemen meskipun berada di dalam kontainer tersembunyi
                     for _, d in ipairs(activeGui:GetDescendants()) do
-                        if d:IsA("GuiObject") and isGuiVisible(d) then
+                        if d:IsA("GuiObject") then
                             local dName = d.Name
                             if dName == "bar" then
                                 if needle == nil or d.AbsoluteSize.X < needle.AbsoluteSize.X then
@@ -798,7 +803,7 @@ local function autoSkillCheck()
                     
                     if not skillBtn then
                         for _, d in ipairs(activeGui:GetDescendants()) do
-                            if (d:IsA("TextButton") or d:IsA("ImageButton")) and isGuiVisible(d) then
+                            if d:IsA("TextButton") or d:IsA("ImageButton") then
                                 local dName = d.Name:lower()
                                 if dName:find("skill") or dName:find("check") or dName:find("button") then
                                     skillBtn = d
@@ -808,15 +813,23 @@ local function autoSkillCheck()
                         end
                     end
                     
+                    -- Cetak debug log ke F9 console sekali saat QTE muncul agar user bisa memantau
+                    if not justPressed[guiKey] and (not _G.lastQteLog or os.clock() - _G.lastQteLog > 5) then
+                        _G.lastQteLog = os.clock()
+                        print(string.format("[Helper QTE] Kaset Aktif! Jarum=%s, Kaset=%s, Tombol=%s", 
+                            tostring(needle ~= nil), tostring(tape ~= nil), tostring(skillBtn ~= nil)))
+                    end
+                    
                     if needle and tape and skillBtn and not justPressed[guiKey] then
                         if needle.AbsoluteSize.X > 0 and tape.AbsoluteSize.X > 0 and tape.AbsolutePosition.X > 0 and needle.AbsolutePosition.X > 0 then
                             local needleCenter = needle.AbsolutePosition.X + needle.AbsoluteSize.X / 2
                             local tapeLeft     = tape.AbsolutePosition.X
                             local tapeRight    = tapeLeft + tape.AbsoluteSize.X
                             
+                            -- Klik tepat di area kaset (100% presisi tanpa pre-fire)
                             if needleCenter >= tapeLeft and needleCenter <= tapeRight then
                                 justPressed[guiKey] = true
-                                clickBtn(skillBtn, false) -- Gunakan mode fisik murni!
+                                clickBtn(skillBtn, false) -- Jalankan multi-klik kaset paralel
                                 task.delay(0.5, function()
                                     justPressed[guiKey] = false
                                 end)
@@ -1481,6 +1494,7 @@ end
 
 
 
+local lastFollowDebugTime = 0
 -- Helper: Cari Root Part Milik Killer (Mendukung Player & NPC/Bot Monster di Workspace)
 local function findKillerRoot()
     local debugLog = (os.clock() - lastFollowDebugTime > 3) -- batasi print setiap 3 detik agar tidak spam

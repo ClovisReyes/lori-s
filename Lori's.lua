@@ -360,7 +360,17 @@ local function checkIfKiller(player)
     if sm ~= nil then
         local s = tostring(sm):lower()
         if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
-            return true
+            -- Jika ronde aktif, pastikan mereka benar-benar memiliki lampu/stain merah khas Killer.
+            -- Ini menyaring mantan Killer dari ronde lalu yang atributnya bocor/tidak dihapus oleh server!
+            if roundActive then
+                local char = player.Character
+                if char and hasRedLightOrStain(char) then
+                    return true
+                end
+            else
+                -- Di lobby, kita langsung percaya atribut SelectedMonster untuk pre-match prediction
+                return true
+            end
         end
     end
 
@@ -370,7 +380,14 @@ local function checkIfKiller(player)
         if v ~= nil then
             local s = tostring(v):lower()
             if s ~= "" and s ~= "false" and s ~= "0" and s ~= "nil" and s ~= "none" then
-                return true
+                if roundActive then
+                    local char = player.Character
+                    if char and hasRedLightOrStain(char) then
+                        return true
+                    end
+                else
+                    return true
+                end
             end
         end
     end

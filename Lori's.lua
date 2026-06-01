@@ -704,8 +704,8 @@ local function autoSkillCheck()
                         return not (layer and not layer.Enabled)
                     end
                     
-                    -- Helper klik button apapun (Mendukung Android & PC secara murni dan fisik)
-                    local function clickBtn(btn)
+                    -- Helper klik button apapun (isSilent=true untuk lingkaran agar tidak curi fokus kamera/gerakan)
+                    local function clickBtn(btn, isSilent)
                         if not btn then return end
                         task.spawn(function()
                             -- 1. Klik virtual via firesignal (sangat bagus untuk Android/PC memory-level)
@@ -715,6 +715,7 @@ local function autoSkillCheck()
                                 pcall(function() firesignal(btn.MouseButton1Up) end)
                                 pcall(function() firesignal(btn.MouseButton1Click) end)
                                 pcall(function() firesignal(btn.Activated) end)
+                                if isSilent then return end
                             end
                             
                             -- 2. Klik virtual via getconnections
@@ -725,6 +726,7 @@ local function autoSkillCheck()
                                         pcall(function() c:Fire() end)
                                     end
                                 end
+                                if isSilent then return end
                             end
                             
                             -- 3. JALANKAN KLIK KIRI FISIK (PC) & TAP FISIK TOMBOL (Android) secara murni via VirtualInputManager!
@@ -861,7 +863,7 @@ local function autoSkillCheck()
                             -- Untuk GUI Minigame: klik Coin, GoldNoCoin, dan Template yang visible (skip Empty)
                             if btnName ~= "Coin" and btnName ~= "GoldNoCoin" and btnName ~= "Template" then continue end
                             
-                            clickBtn(btn)
+                            clickBtn(btn, true)
                         end
                     end
                 end
@@ -1428,13 +1430,16 @@ local function isPlayerKnocked()
     end
     
     -- 1. Deteksi Utama: Adanya ProximityPrompt "Revive" atau "Rescue" di karakter kita sendiri!
-    -- (Sangat akurat karena game memunculkan tombol ini agar player lain bisa menolong kita saat downed)
+    -- PENTING: Jangan cek prompt.Enabled karena prompt ini dimatikan oleh game di client kita sendiri agar tidak bisa revive diri sendiri.
+    -- Keberadaan prompt revive di dalam model karakter kita sendiri sudah merupakan tanda pasti downed!
     for _, prompt in ipairs(char:GetDescendants()) do
-        if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+        if prompt:IsA("ProximityPrompt") then
             local act = prompt.ActionText:lower()
             local obj = prompt.ObjectText:lower()
+            local name = prompt.Name:lower()
             if act:find("revive") or act:find("rescue") or act:find("help") or act:find("tolong") or act:find("save") or
-               obj:find("revive") or obj:find("rescue") or obj:find("help") or obj:find("player") then
+               obj:find("revive") or obj:find("rescue") or obj:find("help") or obj:find("player") or
+               name:find("revive") or name:find("rescue") or name:find("help") then
                 return true
             end
         end
@@ -1475,9 +1480,15 @@ local function isPlayerKnocked()
         end
     end
     
-    -- 5. Attributes Check
-    if char:GetAttribute("Knocked") == true or char:GetAttribute("Downed") == true or char:GetAttribute("IsKnocked") == true or char:GetAttribute("Ragdoll") == true or char:GetAttribute("Lying") == true or char:GetAttribute("Crawling") == true then
-        return true
+    -- 5. Attributes Check (Cek pada Player dan Character)
+    for _, obj in ipairs({LocalPlayer, char}) do
+        if obj then
+            if obj:GetAttribute("Knocked") == true or obj:GetAttribute("Downed") == true or 
+               obj:GetAttribute("IsKnocked") == true or obj:GetAttribute("Ragdoll") == true or 
+               obj:GetAttribute("Lying") == true or obj:GetAttribute("Crawling") == true then
+                return true
+            end
+        end
     end
     
     -- 6. Child elements Check

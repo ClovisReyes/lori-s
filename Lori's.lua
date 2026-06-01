@@ -340,12 +340,14 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 3. Cek Nama Model Karakter di Workspace (jika di-rename oleh game)
+    -- 3. Cek Nama Model Karakter di Workspace (pencocokan pola dinamis)
     local char = player.Character
     if char then
         local charName = char.Name:lower()
-        if CONFIRMED_KILLERS[charName] then
-            return true
+        for kName in pairs(CONFIRMED_KILLERS) do
+            if charName:find(kName) then
+                return true
+            end
         end
     end
 

@@ -358,7 +358,7 @@ local function checkIfKiller(player)
         return false
     end
 
-    -- 3. Cek Karakteristik Fisik & Prompt
+    -- 3. Cek Karakteristik Fisik & Prompt (Knocked State)
     local char = player.Character
     if char then
         -- Cek Revive/Rescue prompt (Hanya ada di survivor knocked, killer tidak pernah punya ini)
@@ -374,25 +374,6 @@ local function checkIfKiller(player)
                 pcall(function() txt = obj.Text:lower() end)
                 if txt:find("help") or txt:find("rescue") or txt:find("camping") or txt:find("revive") then
                     return false
-                end
-            end
-        end
-        
-        -- Cek apakah memiliki lampu merah (red light / vision cone) khas Killer
-        if hasRedLightOrStain(char) then
-            return true
-        end
-
-        -- Cek apakah memiliki senjata khas Killer di badannya
-        for _, child in ipairs(char:GetDescendants()) do
-            if child:IsA("BasePart") or child:IsA("Model") then
-                local tName = child.Name:lower()
-                if tName:find("claw") or tName:find("knife") or tName:find("weapon") or 
-                   tName:find("blade") or tName:find("axe") or tName:find("hammer") or 
-                   tName:find("sword") or tName:find("bat") or tName:find("slasher") or 
-                   tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or 
-                   tName:find("sickle") then
-                    return true
                 end
             end
         end

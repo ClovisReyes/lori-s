@@ -1918,7 +1918,7 @@ end
 -- Loop Auto Follow Killer (Mengikuti Killer Selamanya Saat Aktif & Downed)
 local isAutoFollowKiller = false
 local autoFollowConn = nil
-local slipAwayPaused = false -- Pause sementara saat user tekan SLIP AWAY
+local slipAwayTriggeredThisDown = false -- Kunci jeda permanen per downed state saat menekan SLIP AWAY
 
 local function autoFollowKillerLoop()
     if autoFollowConn then
@@ -1953,8 +1953,8 @@ local function autoFollowKillerLoop()
                         hookedButtons[obj] = true
                         
                         local function triggerSlipAway()
-                            if slipAwayPaused then return end
-                            slipAwayPaused = true
+                            if slipAwayTriggeredThisDown then return end
+                            slipAwayTriggeredThisDown = true
                             
                             pcall(function()
                                 local char = LocalPlayer.Character
@@ -1975,12 +1975,7 @@ local function autoFollowKillerLoop()
                                 end
                             end)
                             
-                            notify("Auto Follow", "Slip Away! Teleport dijeda 10 detik.", 3)
-                            
-                            -- Auto resume setelah 10 detik
-                            task.delay(10, function()
-                                slipAwayPaused = false
-                            end)
+                            notify("Auto Follow", "Slip Away! Teleport dinonaktifkan sampai Anda sehat.", 3)
                         end
                         
                         pcall(function() obj.MouseButton1Click:Connect(triggerSlipAway) end)
@@ -1991,18 +1986,11 @@ local function autoFollowKillerLoop()
         end
     end)
     
-    local hasTeleportedThisDown = false
-
     -- Gunakan Heartbeat agar update setiap frame (sangat smooth & tidak bisa dilewati)
     autoFollowConn = RunService.Heartbeat:Connect(function()
         if not isAutoFollowKiller then
             autoFollowConn:Disconnect()
             autoFollowConn = nil
-            return
-        end
-        
-        -- Jika slip away aktif, jangan teleport
-        if slipAwayPaused then
             return
         end
         
@@ -2012,7 +2000,7 @@ local function autoFollowKillerLoop()
         if root then
             -- Hanya berteleportasi jika kita knocked/downed (sehat = bisa main biasa)
             if not isPlayerKnocked() then
-                hasTeleportedThisDown = false -- Reset status agar siap digunakan di downed berikutnya
+                slipAwayTriggeredThisDown = false -- Reset status agar siap digunakan di downed berikutnya
                 local hum = char:FindFirstChildOfClass("Humanoid")
                 if hum and hum.PlatformStand then
                     hum.PlatformStand = false
@@ -2020,8 +2008,8 @@ local function autoFollowKillerLoop()
                 return
             end
 
-            -- Cukup teleport sekali saja nempel ke killer per knocked state!
-            if hasTeleportedThisDown then
+            -- Jika sudah menekan slip away di downed saat ini, jangan teleport lagi sampai sehat!
+            if slipAwayTriggeredThisDown then
                 return
             end
 
@@ -2036,17 +2024,12 @@ local function autoFollowKillerLoop()
                     hum.PlatformStand = true
                 end
                 
-                -- Teleport ke atas killer (3 stud ke atas, 2 stud di belakang)
+                -- Teleport ke atas killer (3 stud ke atas, 2 stud di belakang) dan nempel terus (Heartbeat)
                 root.CFrame = killerRoot.CFrame * CFrame.new(0, 3, 2)
-                hasTeleportedThisDown = true -- Kunci teleport! Hanya jalan sekali saja.
-                notify("Auto Follow", "Berhasil menempel ke Killer!", 3)
             end
         end
     end)
     _G.LoriHubGlobals.autoFollowConn = autoFollowConn
-end
-
-
 -- Bypass & Movement Physics Card (No-clip & Inf Jump)
 local BypassCard = CreateCard(PlayerTab, "Bypass Mechanics", 135)
 

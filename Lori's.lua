@@ -257,22 +257,17 @@ local function hasRedLightOrStain(model)
     for _, child in ipairs(model:GetDescendants()) do
         if child:IsA("Light") then
             local color = child.Color
-            if color.R > 0.7 and color.G < 0.3 and color.B < 0.3 then
+            if color.R > 0.8 and color.G < 0.2 and color.B < 0.2 then
                 return true
             end
         elseif child:IsA("BasePart") then
-            local color = child.Color
             local name = child.Name:lower()
-            -- Deteksi part transparan merah (red stain) atau part bernama stain/red/light/vision
-            if (name:find("stain") or name:find("red") or name:find("light") or name:find("vision") or name:find("cone")) then
-                if color.R > 0.7 and color.G < 0.3 and color.B < 0.3 then
+            -- Hanya cocokkan part lampu/stain spesifik milik Killer, bukan aksesoris merah biasa
+            if name == "redstain" or name == "stain" or name == "visioncone" or name == "redlight" or name == "lookangle" or name:find("stain") then
+                local color = child.Color
+                if color.R > 0.8 and color.G < 0.2 and color.B < 0.2 then
                     return true
                 end
-            end
-        elseif child:IsA("Decal") or child:IsA("Texture") then
-            local name = child.Name:lower()
-            if name:find("stain") or name:find("red") or name:find("light") or name:find("vision") then
-                return true
             end
         end
     end
@@ -376,6 +371,11 @@ local function checkIfKiller(player)
                     return false
                 end
             end
+        end
+        
+        -- Cek apakah memiliki lampu merah (red light / vision cone) khas Killer (UGC-safe)
+        if hasRedLightOrStain(char) then
+            return true
         end
     end
 
@@ -1507,8 +1507,8 @@ local function espUpdateLoop()
             end
         end
 
-        -- 2. Pindai Bot/NPC Killer di Workspace (Dioptimalkan menggunakan GetChildren)
-        for _, obj in ipairs(workspace:GetChildren()) do
+        -- 2. Pindai Bot/NPC Killer di Workspace (Mendukung bersarang/folders)
+        for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character then
                 local hum = obj:FindFirstChildOfClass("Humanoid")
                 local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")

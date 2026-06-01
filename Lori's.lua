@@ -180,7 +180,7 @@ local function checkIfKiller(player)
         end
         
         -- Jika nama tim jelas killer → pasti Merah
-        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("lori") or tName:find("chaser") or tName:find("hunter") then
+        if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("chaser") or tName:find("hunter") then
             return true
         end
         
@@ -213,7 +213,7 @@ local function checkIfKiller(player)
                     -- Hanya return true jika nama atributnya spesifik dan jelas
                     if attr == "IsKiller" or attr == "IsNightmare" or attr == "Slasher" then
                         if val == true then return true end
-                    elseif s == "nightmare" or s == "killer" or s == "monster" or s == "lori" or s == "slasher" or s == "chaser" or s == "hunter" then
+                    elseif s == "nightmare" or s == "killer" or s == "monster" or s == "slasher" or s == "chaser" or s == "hunter" then
                         return true
                     elseif s == "child" or s == "survivor" or s == "children" then
                         return false
@@ -227,7 +227,7 @@ local function checkIfKiller(player)
     if char then
         local cName = char.Name:lower()
         -- Hanya match nama monster yang sudah dikonfirmasi dari game ini
-        if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("lori") or cName:find("slasher") or cName:find("chaser") or cName:find("hunter") or cName:find("killer") or cName:find("monster") then
+        if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("slasher") or cName:find("chaser") or cName:find("hunter") or cName:find("killer") or cName:find("monster") then
             return true
         end
         
@@ -689,12 +689,10 @@ CreateToggle(FarmCard, "Auto Coin Farm (Teleport)", UDim2.new(0, 10, 0, 35), fal
     end
 end)
 
--- Fitur 1.5: Auto Skill Check Versi 4.0 (Presisi Tinggi & Hemat CPU Adaptif)
+-- Fitur 1.5: Auto Skill Check Versi 4.2 (Presisi Tinggi, Fisik Khusus Kaset & Hemat CPU Adaptif)
 local isAutoSkillCheck = false
 local function autoSkillCheck()
     task.spawn(function()
-        -- Track posisi jarum sebelumnya per-GUI untuk mendeteksi gerakan (bukan keyword)
-        local lastNeedleX = {}
         local justPressed = {}
         local guiOpenedTime = {}
         
@@ -705,7 +703,6 @@ local function autoSkillCheck()
                 continue
             end
             
-            -- Cari apakah ada GUI minigame yang aktif dan visible
             local activeGui = nil
             local activeName = ""
             for _, gui in ipairs(playerGui:GetChildren()) do
@@ -720,19 +717,10 @@ local function autoSkillCheck()
             end
             
             if activeGui then
-                -- =============================================================
-                -- PROSES QTE AKTIF (Kecepatan Penuh / Frame-Rate Game untuk Presisi 100%)
-                -- =============================================================
-                local guiKey = tostring(activeGui):sub(-8)
+                local guiKey = activeGui
                 
                 if not guiOpenedTime[guiKey] then
                     guiOpenedTime[guiKey] = os.clock()
-                end
-                
-                -- Jika GUI kaset (barminigame) baru terbuka < 0.35 detik, tunggu dulu agar posisi terinisialisasi
-                if activeName == "barminigame" and (os.clock() - guiOpenedTime[guiKey] < 0.35) then
-                    task.wait()
-                    continue
                 end
                 
                 local function isGuiVisible(obj)
@@ -746,35 +734,33 @@ local function autoSkillCheck()
                     return not (layer and not layer.Enabled)
                 end
                 
-                -- Helper klik button (menghindari double/triple click lintas metode)
+                -- Helper klik button (isSilent=true untuk koin, isSilent=false untuk kaset agar menggunakan raw input fisik)
                 local function clickBtn(btn, isSilent)
                     if not btn then return end
                     task.spawn(function()
-                        -- 1. Klik virtual via firesignal (sangat bagus untuk Android/PC memory-level)
-                        if firesignal then
-                            pcall(function() btn:Activate() end)
-                            pcall(function() firesignal(btn.MouseButton1Down) end)
-                            pcall(function() firesignal(btn.MouseButton1Up) end)
-                            pcall(function() firesignal(btn.MouseButton1Click) end)
-                            pcall(function() firesignal(btn.Activated) end)
-                            return -- Sukses virtual -> langsung keluar untuk cegah double-click!
-                        end
-                        
-                        -- 2. Klik virtual via getconnections
-                        if getconnections then
-                            pcall(function() btn:Activate() end)
-                            for _, event in ipairs({btn.MouseButton1Down, btn.MouseButton1Up, btn.MouseButton1Click, btn.Activated}) do
-                                for _, c in ipairs(getconnections(event)) do
-                                    pcall(function() c:Fire() end)
-                                end
+                        if isSilent then
+                            -- Mode Silent (Koin): Gunakan virtual clicks agar tidak mencuri fokus mouse/kamera di PC
+                            if firesignal then
+                                pcall(function() btn:Activate() end)
+                                pcall(function() firesignal(btn.MouseButton1Down) end)
+                                pcall(function() firesignal(btn.MouseButton1Up) end)
+                                pcall(function() firesignal(btn.MouseButton1Click) end)
+                                pcall(function() firesignal(btn.Activated) end)
+                                return
                             end
-                            return -- Sukses virtual -> langsung keluar untuk cegah double-click!
+                            if getconnections then
+                                pcall(function() btn:Activate() end)
+                                for _, event in ipairs({btn.MouseButton1Down, btn.MouseButton1Up, btn.MouseButton1Click, btn.Activated}) do
+                                    for _, c in ipairs(getconnections(event)) do
+                                        pcall(function() c:Fire() end)
+                                    end
+                                end
+                                return
+                            end
                         end
                         
-                        -- Jika silent dituntut, jangan jalankan physical click (menghindari curi fokus mouse/kamera di PC)
-                        if isSilent then return end
-                        
-                        -- 3. JALANKAN KLIK FISIK secara murni via VirtualInputManager!
+                        -- Mode Fisik/Raw Input (Kaset): Selalu gunakan VirtualInputManager untuk klik fisik asli!
+                        -- Ini wajib agar game mendeteksi klik kiri (PC) / tap (Android) murni lewat raw UserInputService!
                         pcall(function() btn:Activate() end)
                         local bp = btn.AbsolutePosition
                         local bs = btn.AbsoluteSize
@@ -789,9 +775,6 @@ local function autoSkillCheck()
                 end
                 
                 if activeName == "barminigame" then
-                    -- =============================================================
-                    -- BARMINIGAME QTE (Cassette / Tape Repair)
-                    -- =============================================================
                     local needle = nil
                     local tape = nil
                     local skillBtn = nil
@@ -799,35 +782,20 @@ local function autoSkillCheck()
                     for _, d in ipairs(activeGui:GetDescendants()) do
                         if d:IsA("GuiObject") and isGuiVisible(d) then
                             local dName = d.Name
-                            
-                            -- 1. Cari Jarum (Frame bernama "bar" yang bergerak)
                             if dName == "bar" then
                                 if needle == nil or d.AbsoluteSize.X < needle.AbsoluteSize.X then
                                     needle = d
                                 end
                             end
-                            
-                            -- 2. Cari Tape / Zona Kaset (Goal atau img berukuran kaset)
                             if dName == "Goal" then
                                 tape = d
-                            elseif dName == "img" then
-                                local sz = d.AbsoluteSize
-                                local pos = d.AbsolutePosition
-                                if sz.X >= 40 and sz.X <= 150 and pos.X > 200 then
-                                    if tape == nil or pos.X > tape.AbsolutePosition.X then
-                                        tape = d
-                                    end
-                                end
                             end
-                            
-                            -- 3. Cari Tombol Klik
                             if dName == "SkillCheck" then
                                 skillBtn = d
                             end
                         end
                     end
                     
-                    -- Fallback: Jika skillBtn belum ketemu, cari TextButton/ImageButton yang visible
                     if not skillBtn then
                         for _, d in ipairs(activeGui:GetDescendants()) do
                             if (d:IsA("TextButton") or d:IsA("ImageButton")) and isGuiVisible(d) then
@@ -840,19 +808,15 @@ local function autoSkillCheck()
                         end
                     end
                     
-                    -- Deteksi overlap instan di seluruh area kaset (100% presisi tanpa pre-fire)
                     if needle and tape and skillBtn and not justPressed[guiKey] then
                         if needle.AbsoluteSize.X > 0 and tape.AbsoluteSize.X > 0 and tape.AbsolutePosition.X > 0 and needle.AbsolutePosition.X > 0 then
                             local needleCenter = needle.AbsolutePosition.X + needle.AbsoluteSize.X / 2
                             local tapeLeft     = tape.AbsolutePosition.X
                             local tapeRight    = tapeLeft + tape.AbsoluteSize.X
                             
-                            -- Klik tepat di area kaset (tanpa margin berlebih untuk menghindari kegagalan karena frame-skip)
                             if needleCenter >= tapeLeft and needleCenter <= tapeRight then
                                 justPressed[guiKey] = true
-                                clickBtn(skillBtn)
-                                
-                                -- Jeda agar tidak terjadi klik ganda
+                                clickBtn(skillBtn, false) -- Gunakan mode fisik murni!
                                 task.delay(0.5, function()
                                     justPressed[guiKey] = false
                                 end)
@@ -861,9 +825,6 @@ local function autoSkillCheck()
                     end
                     
                 elseif activeName == "minigame" then
-                    -- =============================================================
-                    -- CIRCLE / COIN QTE — klik Coin, GoldNoCoin, dan Template
-                    -- =============================================================
                     for _, btn in ipairs(activeGui:GetDescendants()) do
                         if not (btn:IsA("ImageButton") or btn:IsA("TextButton")) then continue end
                         if not isGuiVisible(btn) then continue end
@@ -875,21 +836,16 @@ local function autoSkillCheck()
                         local btnName = btn.Name
                         if btnName ~= "Coin" and btnName ~= "GoldNoCoin" and btnName ~= "Template" then continue end
                         
-                        clickBtn(btn, true)
+                        clickBtn(btn, true) -- Mode silent untuk koin
                     end
                 end
-                
-                task.wait() -- Run pada frame rate penuh (~60fps) ketika QTE aktif
+                task.wait()
             else
-                -- Bersihkan tracker untuk hemat memori
-                lastNeedleX = {}
-                -- Hemat CPU ketika tidak ada QTE (10fps scan)
                 task.wait(0.1)
             end
         end
     end)
 end
-
 
 CreateToggle(FarmCard, "Auto Skill Check (TV & Kaset)", UDim2.new(0, 10, 0, 75), false, function(state)
     isAutoSkillCheck = state
@@ -1540,7 +1496,7 @@ local function findKillerRoot()
             -- Cek Tim (Children = Survivor, Nightmare = Killer)
             if p.Team then
                 local tName = p.Team.Name:lower()
-                if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("lori") then
+                if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") then
                     isKiller = true
                 elseif not (tName:find("child") or tName:find("survivor") or tName:find("lobby") or tName:find("spectator")) then
                     if LocalPlayer.Team then
@@ -1563,7 +1519,7 @@ local function findKillerRoot()
             local char = p.Character
             if not isKiller and char then
                 local cName = char.Name:lower()
-                if cName:find("nightmare") or cName:find("killer") or cName:find("slasher") or cName:find("lori") or hasRedLightOrStain(char) then
+                if cName:find("nightmare") or cName:find("killer") or cName:find("slasher") or hasRedLightOrStain(char) then
                     isKiller = true
                 end
             end
@@ -1595,7 +1551,7 @@ local function findKillerRoot()
                 -- Kriteria A: Nama model mengandung kata kunci killer/monster spesifik
                 if oName:find("nightmare") or oName:find("killer") or oName:find("monster") or 
                    oName:find("carnivore") or oName:find("phantom") or oName:find("tarantula") or 
-                   oName:find("spider") or oName:find("lori") or oName:find("slasher") or 
+                   oName:find("spider") or oName:find("slasher") or 
                    oName:find("chaser") or oName:find("hunter") then
                     isKillerCandidate = true
                 end

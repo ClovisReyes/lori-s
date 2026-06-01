@@ -319,21 +319,9 @@ local function checkIfKiller(player)
     if not player then return false end
     if player == LocalPlayer then return false end
 
-    -- 1. Cek apakah ada nyawa aktif (Lives). Jika ada, pasti Survivor ronde ini.
-    local hasLives = player:GetAttribute("Lives") ~= nil
-    if not hasLives and player.Character then
-        hasLives = player.Character:GetAttribute("Lives") ~= nil
-    end
-    if hasLives then
-        return false
-    end
-
-    -- 2. Cek atribut player atau karakter
+    -- 1. Cek atribut player atau karakter menggunakan getAttribute pembantu
     for _, attrName in ipairs({"SelectedMonster", "Monster", "MonsterType", "Role", "Killer"}) do
-        local val = player:GetAttribute(attrName)
-        if not val and player.Character then
-            val = player.Character:GetAttribute(attrName)
-        end
+        local val = getAttribute(player, attrName)
         if val then
             local s = tostring(val):lower()
             if CONFIRMED_KILLERS[s] then
@@ -342,7 +330,7 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 3. Cek Team resmi (jika game menggunakannya)
+    -- 2. Cek Team resmi (jika game menggunakannya)
     local team = player.Team
     if team then
         local tName = team.Name:lower()
@@ -352,7 +340,7 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 4. Cek Nama Model Karakter di Workspace (jika di-rename oleh game)
+    -- 3. Cek Nama Model Karakter di Workspace (jika di-rename oleh game)
     local char = player.Character
     if char then
         local charName = char.Name:lower()
@@ -360,7 +348,7 @@ local function checkIfKiller(player)
             return true
         end
 
-        -- 5. Fallback Sensor Lampu Merah Fisik (antisipasi killer baru)
+        -- 4. Fallback Sensor Lampu Merah Fisik (antisipasi killer baru)
         if hasRedLightOrStain(char) then
             return true
         end

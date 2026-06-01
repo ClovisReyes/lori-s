@@ -327,18 +327,7 @@ local function checkIfKiller(player)
         return false
     end
 
-    -- 2. Cek Atribut khusus Survivor (Abaikan kebocoran atribut Killer jika mereka terbukti Survivor)
-    for _, survAttr in ipairs({"Survivor", "IsSurvivor", "Human", "Innocent", "SurvivorSkin", "Citizen"}) do
-        local v = getAttribute(player, survAttr)
-        if v ~= nil then
-            local s = tostring(v):lower()
-            if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
-                return false
-            end
-        end
-    end
-
-    -- 3. Cek Team (Sangat andal jika game menggunakan Team resmi)
+    -- 2. Cek Team (Sangat andal jika game menggunakan Team resmi)
     local team = player.Team
     if team then
         local tName = team.Name:lower()
@@ -355,7 +344,7 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 4. Cek SelectedMonster (Atribut Killer Ronde Aktif Paling Mutlak di Player & Character)
+    -- 3. Cek SelectedMonster (Atribut Killer Ronde Aktif Paling Mutlak di Player & Character)
     local sm = getAttribute(player, "SelectedMonster")
     if sm ~= nil then
         local s = tostring(sm):lower()
@@ -374,7 +363,7 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 4b. Cek Atribut Killer Ronde Aktif Lainnya
+    -- 3b. Cek Atribut Killer Ronde Aktif Lainnya
     for _, attrName in ipairs({"Killer", "Nightmare", "IsNightmare", "IsKiller", "IsMonster", "Monster"}) do
         local v = getAttribute(player, attrName)
         if v ~= nil then
@@ -392,7 +381,7 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 5. Cek Karakteristik Fisik (Hanya dipercayai saat ronde aktif berjalan)
+    -- 4. Cek Karakteristik Fisik (Hanya dipercayai saat ronde aktif berjalan)
     -- Ini mencegah aksesoris UGC merah/glowing milik survivor di lobby disalahartikan sebagai Killer!
     if roundActive then
         local char = player.Character

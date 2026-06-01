@@ -124,11 +124,26 @@ if _G.LoriHubGlobals then
     pcall(function()
         for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
             if p.Character then
-                for _, root in ipairs({p.Character:FindFirstChild("HumanoidRootPart"), p.Character:FindFirstChildWhichIsA("BasePart")}) do
-                    if root then
-                        local hl = root:FindFirstChild("ESPHighlight")
-                        if hl then hl:Destroy() end
+                local hl = p.Character:FindFirstChild("ESPHighlight")
+                if hl then hl:Destroy() end
+                -- Fallback pembersihan root jika ada sisa dari versi lama
+                for _, r in ipairs({p.Character:FindFirstChild("HumanoidRootPart"), p.Character:FindFirstChildWhichIsA("BasePart")}) do
+                    if r then
+                        local oldHl = r:FindFirstChild("ESPHighlight")
+                        if oldHl then oldHl:Destroy() end
                     end
+                end
+            end
+        end
+        -- Bersihkan juga dari model apa pun di Workspace yang memiliki ESPHighlight kustom
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj:IsA("Model") then
+                local hl = obj:FindFirstChild("ESPHighlight")
+                if hl then hl:Destroy() end
+                local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")
+                if root then
+                    local oldHl = root:FindFirstChild("ESPHighlight")
+                    if oldHl then oldHl:Destroy() end
                 end
             end
         end
@@ -1467,7 +1482,8 @@ local function espUpdateLoop()
                 local char = player.Character
                 local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChildWhichIsA("BasePart")
                 if root then
-                    local hl = root:FindFirstChild("ESPHighlight")
+                    -- Parent Highlight ke Model (char) karena engine Roblox memblokir rendering Highlight yang di-parent ke BasePart (root)
+                    local hl = char:FindFirstChild("ESPHighlight")
                     if not hl then
                         hl = Instance.new("Highlight")
                         hl.Name = "ESPHighlight"
@@ -1475,7 +1491,7 @@ local function espUpdateLoop()
                         hl.FillTransparency = 0.4
                         hl.OutlineTransparency = 0.1
                         hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        pcall(function() hl.Parent = root end)
+                        pcall(function() hl.Parent = char end)
                     end
                     if hl.Adornee ~= char then hl.Adornee = char end
 
@@ -1510,7 +1526,8 @@ local function espUpdateLoop()
                     end
                     
                     if isBotKiller then
-                        local hl = root:FindFirstChild("ESPHighlight")
+                        -- Parent Highlight ke Model (obj) agar ter-render sempurna oleh engine Roblox
+                        local hl = obj:FindFirstChild("ESPHighlight")
                         if not hl then
                             hl = Instance.new("Highlight")
                             hl.Name = "ESPHighlight"
@@ -1518,7 +1535,7 @@ local function espUpdateLoop()
                             hl.FillTransparency = 0.4
                             hl.OutlineTransparency = 0.1
                             hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                            pcall(function() hl.Parent = root end)
+                            pcall(function() hl.Parent = obj end)
                         end
                         if hl.Adornee ~= obj then hl.Adornee = obj end
                         hl.FillColor = Theme.Red
@@ -1548,21 +1565,27 @@ local function togglePlayerESP(state)
         end
         playerEspConns = {}
         
-        -- Hapus ESP dari Player Asli
+        -- Hapus ESP dari Player Asli (Model char)
         for _, p in ipairs(Players:GetPlayers()) do
             if p.Character then
-                local root = p.Character:FindFirstChild("HumanoidRootPart")
-                local hl = root and root:FindFirstChild("ESPHighlight")
+                local hl = p.Character:FindFirstChild("ESPHighlight")
                 if hl then hl:Destroy() end
+                -- Fallback pembersihan root versi lama
+                local root = p.Character:FindFirstChild("HumanoidRootPart")
+                local oldHl = root and root:FindFirstChild("ESPHighlight")
+                if oldHl then oldHl:Destroy() end
             end
         end
 
         -- Hapus ESP dari Bot/NPC Killer di Workspace
         for _, obj in ipairs(workspace:GetChildren()) do
             if obj:IsA("Model") then
-                local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")
-                local hl = root and root:FindFirstChild("ESPHighlight")
+                local hl = obj:FindFirstChild("ESPHighlight")
                 if hl then hl:Destroy() end
+                -- Fallback pembersihan root versi lama
+                local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")
+                local oldHl = root and root:FindFirstChild("ESPHighlight")
+                if oldHl then oldHl:Destroy() end
             end
         end
     end

@@ -319,34 +319,41 @@ local function checkIfKiller(player)
     if not player then return false end
     if player == LocalPlayer then return false end
 
-    -- 1. Cek atribut player atau karakter menggunakan getAttribute pembantu
-    for _, attrName in ipairs({"SelectedMonster", "Monster", "MonsterType", "Role", "Killer"}) do
-        local val = getAttribute(player, attrName)
-        if val then
-            local s = tostring(val):lower()
-            if CONFIRMED_KILLERS[s] then
-                return true
-            end
+    -- 1. Deteksi apakah ada ronde pertandingan yang sedang berjalan aktif
+    local isMatchActive = false
+    for _, p in ipairs(Players:GetPlayers()) do
+        local lives = getAttribute(p, "Lives")
+        if lives and tonumber(lives) and tonumber(lives) > 0 then
+            isMatchActive = true
+            break
         end
     end
 
-    -- 2. Cek Team resmi (jika game menggunakannya)
-    local team = player.Team
-    if team then
-        local tName = team.Name:lower()
-        if tName:find("killer") or tName:find("nightmare") or tName:find("monster") or 
-           tName:find("beast") or tName:find("slasher") or tName:find("hunter") then
+    if isMatchActive then
+        -- 2. Di dalam Match: Siapa pun yang TIDAK memiliki nyawa > 0 adalah Killer
+        local lives = getAttribute(player, "Lives")
+        if not lives or not tonumber(lives) or tonumber(lives) <= 0 then
             return true
         end
-    end
+    else
+        -- 3. Di luar Match (Lobby): Deteksi berdasarkan atribut SelectedMonster atau nama model
+        for _, attrName in ipairs({"SelectedMonster", "Monster", "MonsterType", "Role", "Killer"}) do
+            local val = getAttribute(player, attrName)
+            if val then
+                local s = tostring(val):lower()
+                if CONFIRMED_KILLERS[s] then
+                    return true
+                end
+            end
+        end
 
-    -- 3. Cek Nama Model Karakter di Workspace (pencocokan pola dinamis)
-    local char = player.Character
-    if char then
-        local charName = char.Name:lower()
-        for kName in pairs(CONFIRMED_KILLERS) do
-            if charName:find(kName) then
-                return true
+        local char = player.Character
+        if char then
+            local charName = char.Name:lower()
+            for kName in pairs(CONFIRMED_KILLERS) do
+                if charName:find(kName) then
+                    return true
+                end
             end
         end
     end

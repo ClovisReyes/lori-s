@@ -344,15 +344,12 @@ local function checkIfKiller(player)
             end
         end
 
-        -- Cek senjata killer (Mendukung BasePart & Model kustom, skip cosmetic accessories)
+        -- Cek senjata killer (Mendukung BasePart & Model kustom)
         for _, child in ipairs(char:GetDescendants()) do
             if child:IsA("BasePart") or child:IsA("Model") then
                 local tName = child.Name:lower()
-                local isAccessory = child:FindFirstAncestorWhichIsA("Accessory") ~= nil
-                if not isAccessory then
-                    if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") or tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or tName:find("sickle") then
-                        return true
-                    end
+                if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") or tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or tName:find("sickle") then
+                    return true
                 end
             end
         end

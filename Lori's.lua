@@ -2036,6 +2036,8 @@ local function autoFollowKillerLoop()
         end
     end)
     _G.LoriHubGlobals.autoFollowConn = autoFollowConn
+end
+
 -- Bypass & Movement Physics Card (No-clip & Inf Jump)
 local BypassCard = CreateCard(PlayerTab, "Bypass Mechanics", 135)
 

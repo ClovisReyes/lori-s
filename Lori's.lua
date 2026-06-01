@@ -349,17 +349,7 @@ local function checkIfKiller(player)
     if sm ~= nil then
         local s = tostring(sm):lower()
         if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
-            -- Jika ronde aktif, pastikan mereka benar-benar memiliki lampu/stain merah khas Killer.
-            -- Ini menyaring mantan Killer dari ronde lalu yang atributnya bocor/tidak dihapus oleh server!
-            if roundActive then
-                local char = player.Character
-                if char and hasRedLightOrStain(char) then
-                    return true
-                end
-            else
-                -- Di lobby, kita langsung percaya atribut SelectedMonster untuk pre-match prediction
-                return true
-            end
+            return true
         end
     end
 
@@ -369,44 +359,34 @@ local function checkIfKiller(player)
         if v ~= nil then
             local s = tostring(v):lower()
             if s ~= "" and s ~= "false" and s ~= "0" and s ~= "nil" and s ~= "none" then
-                if roundActive then
-                    local char = player.Character
-                    if char and hasRedLightOrStain(char) then
-                        return true
-                    end
-                else
-                    return true
-                end
+                return true
             end
         end
     end
 
-    -- 4. Cek Karakteristik Fisik (Hanya dipercayai saat ronde aktif berjalan)
-    -- Ini mencegah aksesoris UGC merah/glowing milik survivor di lobby disalahartikan sebagai Killer!
-    if roundActive then
-        local char = player.Character
-        if char then
-            -- Cek Revive/Rescue prompt (Hanya ada di survivor knocked, killer tidak pernah punya ini)
-            for _, obj in ipairs(char:GetDescendants()) do
-                if obj:IsA("ProximityPrompt") then
-                    local act = obj.ActionText:lower()
-                    local name = obj.Name:lower()
-                    if act:find("revive") or act:find("rescue") or act:find("help") or name:find("revive") or name:find("rescue") then
-                        return false
-                    end
-                elseif obj:IsA("BillboardGui") or obj:IsA("TextLabel") then
-                    local txt = ""
-                    pcall(function() txt = obj.Text:lower() end)
-                    if txt:find("help") or txt:find("rescue") or txt:find("camping") or txt:find("revive") then
-                        return false
-                    end
+    -- 4. Cek Karakteristik Fisik (Lampu Merah Khas Killer) sebagai fallback akhir
+    local char = player.Character
+    if char then
+        -- Cek Revive/Rescue prompt (Hanya ada di survivor knocked, killer tidak pernah punya ini)
+        for _, obj in ipairs(char:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") then
+                local act = obj.ActionText:lower()
+                local name = obj.Name:lower()
+                if act:find("revive") or act:find("rescue") or act:find("help") or name:find("revive") or name:find("rescue") then
+                    return false
+                end
+            elseif obj:IsA("BillboardGui") or obj:IsA("TextLabel") then
+                local txt = ""
+                pcall(function() txt = obj.Text:lower() end)
+                if txt:find("help") or txt:find("rescue") or txt:find("camping") or txt:find("revive") then
+                    return false
                 end
             end
-            
-            -- Cek apakah memiliki lampu merah (red light / vision cone) khas Killer (UGC-safe)
-            if hasRedLightOrStain(char) then
-                return true
-            end
+        end
+        
+        -- Cek apakah memiliki lampu merah (red light / vision cone) khas Killer (UGC-safe)
+        if hasRedLightOrStain(char) then
+            return true
         end
     end
 

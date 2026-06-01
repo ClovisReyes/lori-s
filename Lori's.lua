@@ -320,7 +320,25 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 0b. Cek Team (Sangat andal jika game menggunakan Team resmi)
+    -- 1. Cek Lives (Pembeda Paling Akurat & Mutlak Saat Ronde Berjalan)
+    -- Jika player memiliki nyawa/Lives aktif, mereka PASTI Survivor ronde ini, abaikan semua atribut bocor dari ronde lalu!
+    local hasLives = getAttribute(player, "Lives") ~= nil
+    if hasLives then
+        return false
+    end
+
+    -- 2. Cek Atribut khusus Survivor (Abaikan kebocoran atribut Killer jika mereka terbukti Survivor)
+    for _, survAttr in ipairs({"Survivor", "IsSurvivor", "Human", "Innocent", "SurvivorSkin", "Citizen"}) do
+        local v = getAttribute(player, survAttr)
+        if v ~= nil then
+            local s = tostring(v):lower()
+            if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
+                return false
+            end
+        end
+    end
+
+    -- 3. Cek Team (Sangat andal jika game menggunakan Team resmi)
     local team = player.Team
     if team then
         local tName = team.Name:lower()
@@ -337,7 +355,7 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 1. Cek SelectedMonster (Atribut Killer Ronde Aktif Paling Mutlak di Player & Character)
+    -- 4. Cek SelectedMonster (Atribut Killer Ronde Aktif Paling Mutlak di Player & Character)
     local sm = getAttribute(player, "SelectedMonster")
     if sm ~= nil then
         local s = tostring(sm):lower()
@@ -346,7 +364,7 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 1b. Cek Atribut Killer Ronde Aktif Lainnya
+    -- 4b. Cek Atribut Killer Ronde Aktif Lainnya
     for _, attrName in ipairs({"Killer", "Nightmare", "IsNightmare", "IsKiller", "IsMonster", "Monster"}) do
         local v = getAttribute(player, attrName)
         if v ~= nil then
@@ -357,24 +375,7 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 1c. Cek Atribut khusus Survivor (Jika ada, langsung pastikan Survivor)
-    for _, survAttr in ipairs({"Survivor", "IsSurvivor", "Human", "Innocent", "SurvivorSkin", "Citizen"}) do
-        local v = getAttribute(player, survAttr)
-        if v ~= nil then
-            local s = tostring(v):lower()
-            if s ~= "" and s ~= "false" and s ~= "nil" and s ~= "none" and s ~= "0" then
-                return false
-            end
-        end
-    end
-
-    -- 2. Cek Lives (Pembeda Paling Akurat di Arena Pertandingan!)
-    local hasLives = getAttribute(player, "Lives") ~= nil
-    if hasLives then
-        return false
-    end
-
-    -- 3. Cek Karakteristik Fisik (Hanya dipercayai saat ronde aktif berjalan)
+    -- 5. Cek Karakteristik Fisik (Hanya dipercayai saat ronde aktif berjalan)
     -- Ini mencegah aksesoris UGC merah/glowing milik survivor di lobby disalahartikan sebagai Killer!
     if roundActive then
         local char = player.Character
@@ -1517,16 +1518,50 @@ local function espUpdateLoop()
                     end
                     if hl.Adornee ~= char then hl.Adornee = char end
 
-                    -- Tentukan warna: MERAH untuk killer, HIJAU untuk survivor
-                    local isKiller = false
-                    pcall(function() isKiller = isPlayerKiller(player) end)
-                    if isKiller then
-                        hl.FillColor = Theme.Red
-                        hl.OutlineColor = Color3.fromRGB(255, 120, 120)
-                    else
-                        hl.FillColor = Theme.Green
-                        hl.OutlineColor = Theme.TextActive
-                    end
+                        -- Tentukan warna: MERAH untuk killer, HIJAU untuk survivor
+                        local isKiller = false
+                        
+                        -- Pengecekan pre-match / lobby: jika local player di tim lobby/spectator, paksa hijau kecuali SelectedMonster valid
+                        local isLobbyMode = false
+                        local myTeam = LocalPlayer.Team
+                        if myTeam then
+                            local mtName = myTeam.Name:lower()
+                            if mtName:find("lobby") or mtName:find("spectat") or mtName:find("waiting") or mtName:find("choosing") then
+                                isLobbyMode = true
+                            end
+                        end
+                        
+                        -- Cek apakah ronde sedang aktif secara global
+                        local isRoundRunning = false
+                        for _, p in ipairs(Players:GetPlayers()) do
+                            if p:GetAttribute("Lives") ~= nil then
+                                isRoundRunning = true
+                                break
+                            end
+                        end
+                        
+                        if not isRoundRunning or isLobbyMode then
+                            -- Di lobby / spectator mode: hanya Kugisaki (atau killer terpilih baru) yang boleh merah.
+                            -- Sisanya dipaksa HIJAU.
+                            local sm = getAttribute(player, "SelectedMonster")
+                            if sm ~= nil then
+                                local s = tostring(sm):lower()
+                                if s ~= "" and s ~= "false" and s ~= "none" and s ~= "nil" and s ~= "0" then
+                                    isKiller = true
+                                end
+                            end
+                        else
+                            -- Di dalam match aktif: gunakan deteksi checkIfKiller standar
+                            pcall(function() isKiller = isPlayerKiller(player) end)
+                        end
+
+                        if isKiller then
+                            hl.FillColor = Theme.Red
+                            hl.OutlineColor = Color3.fromRGB(255, 120, 120)
+                        else
+                            hl.FillColor = Theme.Green
+                            hl.OutlineColor = Theme.TextActive
+                        end
                 end
             end
         end

@@ -688,22 +688,25 @@ local function autoSkillCheck()
                         return not (layer and not layer.Enabled)
                     end
                     
-                    -- Helper klik button apapun
+                    -- Helper klik button apapun (Mendukung Android & PC secara murni dan silent)
                     local function clickBtn(btn)
                         if not btn then return end
                         task.spawn(function()
                             if firesignal then
                                 pcall(function() btn:Activate() end)
-                                pcall(function() firesignal(btn.MouseButton1Click) end)
                                 pcall(function() firesignal(btn.MouseButton1Down) end)
+                                pcall(function() firesignal(btn.MouseButton1Up) end)
+                                pcall(function() firesignal(btn.MouseButton1Click) end)
                                 pcall(function() firesignal(btn.Activated) end)
                                 return
                             end
                             if getconnections then
                                 pcall(function() btn:Activate() end)
-                                for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(function() c:Fire() end) end
-                                for _, c in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() c:Fire() end) end
-                                for _, c in ipairs(getconnections(btn.Activated)) do pcall(function() c:Fire() end) end
+                                for _, event in ipairs({btn.MouseButton1Down, btn.MouseButton1Up, btn.MouseButton1Click, btn.Activated}) do
+                                    for _, c in ipairs(getconnections(event)) do
+                                        pcall(function() c:Fire() end)
+                                    end
+                                end
                                 return
                             end
                             pcall(function() btn:Activate() end)
@@ -1446,14 +1449,25 @@ end
 
 
 
+local lastFollowDebugTime = 0
 -- Helper: Cari Root Part Milik Killer (Mendukung Player & NPC/Bot Monster di Workspace)
 local function findKillerRoot()
+    local debugLog = (os.clock() - lastFollowDebugTime > 3) -- batasi print setiap 3 detik agar tidak spam
+    if debugLog then
+        lastFollowDebugTime = os.clock()
+    end
+    
     -- 1. Cari Killer sebagai Player (gunakan checkIfKiller)
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and checkIfKiller(p) then
             local char = p.Character
             local root = char and char:FindFirstChild("HumanoidRootPart")
-            if root then return root end
+            if root then 
+                if debugLog then
+                    print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Player): " .. p.Name .. " (Model: " .. tostring(char) .. ")")
+                end
+                return root 
+            end
         end
     end
     
@@ -1465,7 +1479,12 @@ local function findKillerRoot()
                oName:find("carnivore") or oName:find("phantom") or oName:find("tarantula") or oName:find("spider") or
                obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") then
                 local root = obj:FindFirstChild("HumanoidRootPart")
-                if root then return root end
+                if root then 
+                    if debugLog then
+                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Bot/NPC Workspace): " .. obj.Name)
+                    end
+                    return root 
+                end
             end
         end
     end
@@ -1477,7 +1496,12 @@ local function findKillerRoot()
             if oName:find("nightmare") or oName:find("killer") or obj:GetAttribute("IsNightmare") or obj:GetAttribute("IsKiller") or
                oName:find("carnivore") or oName:find("phantom") or oName:find("tarantula") or oName:find("spider") then
                 local root = obj:FindFirstChild("HumanoidRootPart")
-                if root then return root end
+                if root then 
+                    if debugLog then
+                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Bot/NPC Descendant): " .. obj.Name)
+                    end
+                    return root 
+                end
             end
         end
     end
@@ -1487,12 +1511,28 @@ local function findKillerRoot()
         if p ~= LocalPlayer and p.Character then
             local pHum = p.Character:FindFirstChildOfClass("Humanoid")
             local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
-            if pHum and pRoot and pHum.WalkSpeed > 22 and checkIfKiller(p) then
-                return pRoot
+            if pHum and pRoot and pHum.WalkSpeed > 22 then
+                -- Pastikan bukan survivor berdasarkan tim (menghindari false-positive)
+                local isSurvivor = false
+                if p.Team then
+                    local tName = p.Team.Name:lower()
+                    if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("innocent") or tName:find("lobby") or tName:find("spectator") or tName:find("waiting") or tName:find("choosing") then
+                        isSurvivor = true
+                    end
+                end
+                if not isSurvivor then
+                    if debugLog then
+                        print("[AUTO-FOLLOW DEBUG] Berhasil menemukan Killer (Fallback WalkSpeed > 22): " .. p.Name)
+                    end
+                    return pRoot
+                end
             end
         end
     end
     
+    if debugLog then
+        print("[AUTO-FOLLOW DEBUG] Killer tidak ditemukan pada frame ini!")
+    end
     return nil
 end
 

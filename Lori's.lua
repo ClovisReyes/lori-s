@@ -302,6 +302,23 @@ local function checkIfKiller(player)
     if not player then return false end
     if player == LocalPlayer then return false end
 
+    -- 0. Cek Team (Sangat andal jika game menggunakan Team resmi)
+    local team = player.Team
+    if team then
+        local tName = team.Name:lower()
+        if tName:find("child") or tName:find("survivor") or tName:find("citizen") or 
+           tName:find("lobby") or tName:find("spectator") or tName:find("waiting") or 
+           tName:find("choosing") or tName:find("spectate") or tName:find("innocent") or 
+           tName:find("human") or tName:find("people") or tName:find("surv") then
+            return false
+        end
+        if tName:find("killer") or tName:find("nightmare") or tName:find("monster") or 
+           tName:find("beast") or tName:find("slasher") or tName:find("hunter") or 
+           tName:find("carnivore") or tName:find("phantom") then
+            return true
+        end
+    end
+
     -- 1. Cek SelectedMonster (Atribut Killer Ronde Aktif Paling Mutlak)
     local sm = player:GetAttribute("SelectedMonster")
     if sm ~= nil then
@@ -322,6 +339,17 @@ local function checkIfKiller(player)
         end
     end
 
+    -- 1c. Cek Atribut khusus Survivor (Jika ada, langsung pastikan Survivor)
+    for _, survAttr in ipairs({"Survivor", "IsSurvivor", "Human", "Innocent", "SurvivorSkin", "Citizen"}) do
+        local v = player:GetAttribute(survAttr)
+        if v ~= nil then
+            local s = tostring(v):lower()
+            if s ~= "" and s ~= "false" and s ~= "nil" and s ~= "none" and s ~= "0" then
+                return false
+            end
+        end
+    end
+
     -- 2. Cek Lives (Pembeda Paling Akurat di Arena Pertandingan!)
     -- Di arena pertandingan aktif, semua Survivor SELALU memiliki atribut "Lives" (3, 2, 1, atau 0).
     -- Sedangkan Killer AKTIF tidak pernah memiliki atribut "Lives" (nil).
@@ -331,7 +359,6 @@ local function checkIfKiller(player)
     end
 
     -- 3. Cek Karakteristik Fisik & Prompt
-    -- Jika tidak memiliki Lives, dan tidak memiliki prompt penyelamatan, mereka adalah Killer aktif!
     local char = player.Character
     if char then
         -- Cek Revive/Rescue prompt (Hanya ada di survivor knocked, killer tidak pernah punya ini)
@@ -351,9 +378,27 @@ local function checkIfKiller(player)
             end
         end
         
-        return true
+        -- Cek apakah memiliki lampu merah (red light / vision cone) khas Killer
+        if hasRedLightOrStain(char) then
+            return true
+        end
+
+        -- Cek apakah memiliki senjata khas Killer di badannya
+        for _, child in ipairs(char:GetDescendants()) do
+            if child:IsA("BasePart") or child:IsA("Model") then
+                local tName = child.Name:lower()
+                if tName:find("claw") or tName:find("knife") or tName:find("weapon") or 
+                   tName:find("blade") or tName:find("axe") or tName:find("hammer") or 
+                   tName:find("sword") or tName:find("bat") or tName:find("slasher") or 
+                   tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or 
+                   tName:find("sickle") then
+                    return true
+                end
+            end
+        end
     end
 
+    -- Default ke Survivor (Hijau) untuk menghindari false-positive pada player biasa di lobby/spectator
     return false
 end
 

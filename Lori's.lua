@@ -322,61 +322,48 @@ local function checkIfKiller(player)
         end
     end
 
-    -- 2. Cek Lives (Jika tidak ada atribut monster/killer, survivor aktif pasti memiliki Lives)
+    -- 2. Cek Karakteristik Fisik Mutlak (Red Light, Model Nama Slasher, Senjata Non-Aksesoris)
+    -- Ini diletakkan SEBELUM cek Lives/Team agar terhindar dari bug replikasi atribut/tim dari ronde sebelumnya!
+    local char = player.Character
+    if char then
+        -- Cek lampu merah / red stain (Hanya dimiliki Killer aktif!)
+        if hasRedLightOrStain(char) then
+            return true
+        end
+
+        -- Cek model nama monster (Hanya dimiliki Killer aktif!)
+        local cName = char.Name:lower()
+        if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("slasher") or cName:find("chaser") or cName:find("hunter") or cName:find("spectre") or cName:find("azazil") or cName:find("spider") then
+            return true
+        end
+
+        -- Cek senjata killer (Mendukung BasePart & Model kustom, menyaring aksesoris kosmetik survivor)
+        for _, child in ipairs(char:GetDescendants()) do
+            if child:IsA("BasePart") or child:IsA("Model") then
+                local tName = child.Name:lower()
+                local isAccessory = child:FindFirstAncestorWhichIsA("Accessory") ~= nil
+                if not isAccessory then
+                    if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") or tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or tName:find("sickle") then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3. Cek Lives (Jika tidak terbukti Killer secara fisik, survivor aktif pasti memiliki Lives)
     local hasLives = player:GetAttribute("Lives") ~= nil
     if hasLives then
         return false
     end
 
-    -- 3. Cek Tim Roblox (Sumber kebenaran paling mutlak!)
+    -- 4. Cek Tim Roblox
     if player.Team then
         local tName = player.Team.Name:lower()
         if tName:find("child") or tName:find("survivor") or tName:find("citizen") or tName:find("lobby") or tName:find("spectator") or tName:find("waiting") or tName:find("choosing") then
             return false
         end
         if tName:find("nightmare") or tName:find("killer") or tName:find("monster") or tName:find("slasher") or tName:find("chaser") or tName:find("hunter") then
-            return true
-        end
-    end
-
-    -- 4. Cek karakteristik fisik karakter (Senjata, Lampu Merah, Model Nama)
-    local char = player.Character
-    if char then
-        -- Cek Revive prompt (Hanya ada di survivor knocked, killer tidak pernah punya ini)
-        for _, obj in ipairs(char:GetDescendants()) do
-            if obj:IsA("ProximityPrompt") then
-                local act = obj.ActionText:lower()
-                local name = obj.Name:lower()
-                if act:find("revive") or act:find("rescue") or act:find("help") or name:find("revive") or name:find("rescue") then
-                    return false
-                end
-            elseif obj:IsA("BillboardGui") or obj:IsA("TextLabel") then
-                local txt = ""
-                pcall(function() txt = obj.Text:lower() end)
-                if txt:find("help") or txt:find("rescue") or txt:find("camping") or txt:find("revive") then
-                    return false
-                end
-            end
-        end
-
-        -- Cek senjata killer (Mendukung BasePart & Model kustom)
-        for _, child in ipairs(char:GetDescendants()) do
-            if child:IsA("BasePart") or child:IsA("Model") then
-                local tName = child.Name:lower()
-                if tName:find("claw") or tName:find("knife") or tName:find("weapon") or tName:find("blade") or tName:find("axe") or tName:find("hammer") or tName:find("sword") or tName:find("bat") or tName:find("slasher") or tName:find("machete") or tName:find("cleaver") or tName:find("scythe") or tName:find("sickle") then
-                    return true
-                end
-            end
-        end
-
-        -- Cek lampu merah / red stain
-        if hasRedLightOrStain(char) then
-            return true
-        end
-
-        -- Cek model nama monster
-        local cName = char.Name:lower()
-        if cName:find("nightmare") or cName:find("carnivore") or cName:find("phantom") or cName:find("tarantula") or cName:find("slasher") or cName:find("chaser") or cName:find("hunter") or cName:find("spectre") or cName:find("azazil") or cName:find("spider") then
             return true
         end
     end

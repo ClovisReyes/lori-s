@@ -12,7 +12,11 @@ while not localPlayer do
     localPlayer = Players.LocalPlayer
 end
 
--- Note: Character wait has been moved to the auto-hop execution flow below to prevent blocking the initial GUI load.
+-- Wait for character to spawn to avoid Teleport Error 769
+if not localPlayer.Character then
+    localPlayer.CharacterAdded:Wait()
+end
+task.wait(1.5) -- Extra buffer delay to ensure replication is complete
 
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
@@ -105,15 +109,7 @@ end
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "FishItServerHopGui"
 screenGui.ResetOnSpawn = false
-
-local successParent = pcall(function()
-    screenGui.Parent = parentGui
-end)
-if not successParent then
-    pcall(function()
-        screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
-    end)
-end
+screenGui.Parent = parentGui
 
 -- Main Panel Frame
 local mainFrame = Instance.new("Frame")
@@ -406,21 +402,6 @@ thumbCorner2.Parent = rejoinThumb
 -- COMPONENT STYLING & ANIMATIONS
 ---------------------------------------
 
-local function dismissRobloxPrompt()
-    pcall(function()
-        local robloxPromptGui = game:GetService("CoreGui"):FindFirstChild("RobloxPromptGui")
-        if robloxPromptGui then
-            local promptOverlay = robloxPromptGui:FindFirstChild("promptOverlay")
-            if promptOverlay then
-                local errorPrompt = promptOverlay:FindFirstChild("ErrorPrompt")
-                if errorPrompt then
-                    errorPrompt.Visible = false
-                end
-            end
-        end
-    end)
-end
-
 local function updateStatus(text, isError)
     statusLabel.Text = "Status: " .. text
     if isError then
@@ -653,8 +634,6 @@ local function executeServerHop()
 
         if targetServer then
             updateStatus("Teleporting (" .. targetServer.playing .. "/" .. targetServer.maxPlayers .. ")...")
-            dismissRobloxPrompt()
-            
             local teleportSuccess, errorMsg = pcall(function()
                 TeleportService:TeleportToPlaceInstance(placeId, targetServer.id, localPlayer)
             end)
@@ -662,7 +641,6 @@ local function executeServerHop()
             if not teleportSuccess then
                 updateStatus("Teleport failed, trying default...", true)
                 task.wait(1.5)
-                dismissRobloxPrompt()
                 pcall(function()
                     TeleportService:Teleport(placeId, localPlayer)
                 end)
@@ -678,9 +656,7 @@ end
 -- Retry server hop automatically if the teleport fails
 TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
     if player == localPlayer then
-        warn("Teleport failed: " .. tostring(errorMessage))
-        dismissRobloxPrompt()
-        updateStatus("Teleport failed, retrying hop in 3s...", true)
+        updateStatus("Teleport failed: " .. tostring(errorMessage) .. ". Retrying hop in 3s...", true)
         task.wait(3)
         executeServerHop()
     end
@@ -806,7 +782,6 @@ GuiService.ErrorMessageChanged:Connect(function()
         
         task.wait(8)
         
-        dismissRobloxPrompt()
         local success, err = pcall(function()
             TeleportService:Teleport(game.PlaceId, localPlayer)
         end)
@@ -814,7 +789,6 @@ GuiService.ErrorMessageChanged:Connect(function()
         if not success then
             notifyText.Text = "Rejoin failed! Retrying..."
             task.wait(5)
-            dismissRobloxPrompt()
             pcall(function()
                 TeleportService:Teleport(game.PlaceId, localPlayer)
             end)
@@ -830,21 +804,15 @@ print("Fish It! Server Hopper loaded successfully.")
 
 -- Start the countdown if autoHop setting is pre-loaded as enabled
 if settings.autoHop then
-    task.spawn(function()
-        updateStatus("Waiting for character...")
-        -- Wait for character to spawn before auto-hopping
-        if not localPlayer.Character then
-            localPlayer.CharacterAdded:Wait()
-        end
-        task.wait(1.5) -- Safety delay to ensure replication is complete
-
-        if settings.hopInterval == 0 then
+    if settings.hopInterval == 0 then
+        task.spawn(function()
             updateStatus("Auto-hopping instantly...")
+            task.wait(1.5) -- Tiny safety wait to let Roblox player state initialize fully
             executeServerHop()
-        else
-            startCountdown()
-        end
-    end)
+        end)
+    else
+        startCountdown()
+    end
 else
     updateStatus("Ready")
 end

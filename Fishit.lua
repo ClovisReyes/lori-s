@@ -406,6 +406,21 @@ thumbCorner2.Parent = rejoinThumb
 -- COMPONENT STYLING & ANIMATIONS
 ---------------------------------------
 
+local function dismissRobloxPrompt()
+    pcall(function()
+        local robloxPromptGui = game:GetService("CoreGui"):FindFirstChild("RobloxPromptGui")
+        if robloxPromptGui then
+            local promptOverlay = robloxPromptGui:FindFirstChild("promptOverlay")
+            if promptOverlay then
+                local errorPrompt = promptOverlay:FindFirstChild("ErrorPrompt")
+                if errorPrompt then
+                    errorPrompt.Visible = false
+                end
+            end
+        end
+    end)
+end
+
 local function updateStatus(text, isError)
     statusLabel.Text = "Status: " .. text
     if isError then
@@ -638,15 +653,20 @@ local function executeServerHop()
 
         if targetServer then
             updateStatus("Teleporting (" .. targetServer.playing .. "/" .. targetServer.maxPlayers .. ")...")
+            dismissRobloxPrompt()
+            
             local teleportSuccess, errorMsg = pcall(function()
-                TeleportService:TeleportToPlaceInstance(placeId, targetServer.id, localPlayer)
+                local options = Instance.new("TeleportOptions")
+                options.ServerInstanceId = targetServer.id
+                TeleportService:TeleportAsync(placeId, {localPlayer}, options)
             end)
 
             if not teleportSuccess then
                 updateStatus("Teleport failed, trying default...", true)
                 task.wait(1.5)
+                dismissRobloxPrompt()
                 pcall(function()
-                    TeleportService:Teleport(placeId, localPlayer)
+                    TeleportService:TeleportAsync(placeId, {localPlayer})
                 end)
             end
         else
@@ -660,7 +680,9 @@ end
 -- Retry server hop automatically if the teleport fails
 TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
     if player == localPlayer then
-        updateStatus("Teleport failed: " .. tostring(errorMessage) .. ". Retrying hop in 3s...", true)
+        warn("Teleport failed: " .. tostring(errorMessage))
+        dismissRobloxPrompt()
+        updateStatus("Teleport failed, retrying hop in 3s...", true)
         task.wait(3)
         executeServerHop()
     end
@@ -786,15 +808,17 @@ GuiService.ErrorMessageChanged:Connect(function()
         
         task.wait(8)
         
+        dismissRobloxPrompt()
         local success, err = pcall(function()
-            TeleportService:Teleport(game.PlaceId, localPlayer)
+            TeleportService:TeleportAsync(game.PlaceId, {localPlayer})
         end)
         
         if not success then
             notifyText.Text = "Rejoin failed! Retrying..."
             task.wait(5)
+            dismissRobloxPrompt()
             pcall(function()
-                TeleportService:Teleport(game.PlaceId, localPlayer)
+                TeleportService:TeleportAsync(game.PlaceId, {localPlayer})
             end)
         end
     end

@@ -656,9 +656,7 @@ local function executeServerHop()
             dismissRobloxPrompt()
             
             local teleportSuccess, errorMsg = pcall(function()
-                local options = Instance.new("TeleportOptions")
-                options.ServerInstanceId = targetServer.id
-                TeleportService:TeleportAsync(placeId, {localPlayer}, options)
+                TeleportService:TeleportToPlaceInstance(placeId, targetServer.id, localPlayer)
             end)
 
             if not teleportSuccess then
@@ -666,7 +664,7 @@ local function executeServerHop()
                 task.wait(1.5)
                 dismissRobloxPrompt()
                 pcall(function()
-                    TeleportService:TeleportAsync(placeId, {localPlayer})
+                    TeleportService:Teleport(placeId, localPlayer)
                 end)
             end
         else
@@ -810,7 +808,7 @@ GuiService.ErrorMessageChanged:Connect(function()
         
         dismissRobloxPrompt()
         local success, err = pcall(function()
-            TeleportService:TeleportAsync(game.PlaceId, {localPlayer})
+            TeleportService:Teleport(game.PlaceId, localPlayer)
         end)
         
         if not success then
@@ -818,7 +816,7 @@ GuiService.ErrorMessageChanged:Connect(function()
             task.wait(5)
             dismissRobloxPrompt()
             pcall(function()
-                TeleportService:TeleportAsync(game.PlaceId, {localPlayer})
+                TeleportService:Teleport(game.PlaceId, localPlayer)
             end)
         end
     end

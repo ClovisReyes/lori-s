@@ -12,11 +12,7 @@ while not localPlayer do
     localPlayer = Players.LocalPlayer
 end
 
--- Wait for character to spawn to avoid Teleport Error 769
-if not localPlayer.Character then
-    localPlayer.CharacterAdded:Wait()
-end
-task.wait(1.5) -- Extra buffer delay to ensure replication is complete
+-- Note: Character wait has been moved to the auto-hop execution flow below to prevent blocking the initial GUI load.
 
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
@@ -109,7 +105,15 @@ end
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "FishItServerHopGui"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = parentGui
+
+local successParent = pcall(function()
+    screenGui.Parent = parentGui
+end)
+if not successParent then
+    pcall(function()
+        screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
+    end)
+end
 
 -- Main Panel Frame
 local mainFrame = Instance.new("Frame")
@@ -804,15 +808,21 @@ print("Fish It! Server Hopper loaded successfully.")
 
 -- Start the countdown if autoHop setting is pre-loaded as enabled
 if settings.autoHop then
-    if settings.hopInterval == 0 then
-        task.spawn(function()
+    task.spawn(function()
+        updateStatus("Waiting for character...")
+        -- Wait for character to spawn before auto-hopping
+        if not localPlayer.Character then
+            localPlayer.CharacterAdded:Wait()
+        end
+        task.wait(1.5) -- Safety delay to ensure replication is complete
+
+        if settings.hopInterval == 0 then
             updateStatus("Auto-hopping instantly...")
-            task.wait(1.5) -- Tiny safety wait to let Roblox player state initialize fully
             executeServerHop()
-        end)
-    else
-        startCountdown()
-    end
+        else
+            startCountdown()
+        end
+    end)
 else
     updateStatus("Ready")
 end

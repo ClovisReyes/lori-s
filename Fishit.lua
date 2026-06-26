@@ -1,5 +1,4 @@
--- Fish It! / General Roblox Server Hopper (Automated & Persistent)
--- Developed by Antigravity
+-- server hopper script (autosave + autohop loop)
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -12,11 +11,11 @@ while not localPlayer do
     localPlayer = Players.LocalPlayer
 end
 
--- Wait for character to spawn to avoid Teleport Error 769
+-- wait for character so teleport doesn't fail (error 769)
 if not localPlayer.Character then
     localPlayer.CharacterAdded:Wait()
 end
-task.wait(1.5) -- Extra buffer delay to ensure replication is complete
+task.wait(1.5) -- wait for replication to finish
 
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
@@ -26,10 +25,7 @@ local GuiService = game:GetService("GuiService")
 
 local CONFIG_FILENAME = "serverhopper_config_" .. tostring(game.PlaceId) .. ".json"
 
----------------------------------------
--- CONFIGURATION & PERSISTENCE
----------------------------------------
-
+-- settings defaults
 local settings = {
     autoHop = false,
     hopInterval = 60,
@@ -37,6 +33,7 @@ local settings = {
     autoRejoin = false
 }
 
+-- check if file exists on disk
 local function fileExists(filename)
     if isfile then
         local success, val = pcall(function() return isfile(filename) end)
@@ -46,6 +43,7 @@ local function fileExists(filename)
     return success
 end
 
+-- save settings to json
 local function saveSettings()
     local success, content = pcall(function()
         return HttpService:JSONEncode(settings)
@@ -57,6 +55,7 @@ local function saveSettings()
     end
 end
 
+-- load settings from json
 local function loadSettings()
     if fileExists(CONFIG_FILENAME) then
         local success, content = pcall(function()
@@ -75,13 +74,9 @@ local function loadSettings()
     end
 end
 
--- Load settings immediately
 loadSettings()
 
----------------------------------------
--- PREVENT DUPLICATE GUIS
----------------------------------------
-
+-- remove old gui if it exists
 local function cleanupExisting()
     local success, coreGui = pcall(function() return game:GetService("CoreGui") end)
     if success and coreGui then
@@ -93,7 +88,7 @@ local function cleanupExisting()
 end
 cleanupExisting()
 
--- Select Parent GUI
+-- check where to parent the gui
 local parentGui
 local successCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
 if successCore and coreGui then
@@ -102,19 +97,16 @@ else
     parentGui = localPlayer:WaitForChild("PlayerGui")
 end
 
----------------------------------------
--- GUI SETUP
----------------------------------------
-
+-- gui setup
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "FishItServerHopGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = parentGui
 
--- Main Panel Frame
+-- main panel
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 360, 0, 310) -- Expanded height to fit new inputs
+mainFrame.Size = UDim2.new(0, 360, 0, 310)
 mainFrame.Position = UDim2.new(0.5, -180, 0.4, -155)
 mainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 mainFrame.BorderSizePixel = 0
@@ -130,7 +122,7 @@ stroke.Color = Color3.fromRGB(45, 45, 58)
 stroke.Thickness = 1.5
 stroke.Parent = mainFrame
 
--- Title Header Frame
+-- title header
 local headerFrame = Instance.new("Frame")
 headerFrame.Name = "HeaderFrame"
 headerFrame.Size = UDim2.new(1, 0, 0, 42)
@@ -142,6 +134,7 @@ local headerCorner = Instance.new("UICorner")
 headerCorner.CornerRadius = UDim.new(0, 10)
 headerCorner.Parent = headerFrame
 
+-- cover bottom corners of header
 local headerOverlap = Instance.new("Frame")
 headerOverlap.Name = "HeaderOverlap"
 headerOverlap.Size = UDim2.new(1, 0, 0, 10)
@@ -188,7 +181,7 @@ closeBtn.TextSize = 22
 closeBtn.TextColor3 = Color3.fromRGB(150, 150, 160)
 closeBtn.Parent = headerFrame
 
--- Content Container Frame
+-- content container
 local contentFrame = Instance.new("Frame")
 contentFrame.Name = "ContentFrame"
 contentFrame.Size = UDim2.new(1, 0, 1, -44)
@@ -196,7 +189,7 @@ contentFrame.Position = UDim2.new(0, 0, 0, 44)
 contentFrame.BackgroundTransparency = 1
 contentFrame.Parent = mainFrame
 
--- Status Text
+-- status text
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Name = "StatusLabel"
 statusLabel.Size = UDim2.new(1, -30, 0, 20)
@@ -209,7 +202,7 @@ statusLabel.TextColor3 = Color3.fromRGB(0, 210, 255)
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.Parent = contentFrame
 
--- Server Info Text
+-- player count info
 local infoLabel = Instance.new("TextLabel")
 infoLabel.Name = "InfoLabel"
 infoLabel.Size = UDim2.new(1, -30, 0, 18)
@@ -222,7 +215,7 @@ infoLabel.TextColor3 = Color3.fromRGB(140, 140, 150)
 infoLabel.TextXAlignment = Enum.TextXAlignment.Left
 infoLabel.Parent = contentFrame
 
--- Main Server Hop Action Button
+-- hop button
 local hopBtn = Instance.new("TextButton")
 hopBtn.Name = "HopBtn"
 hopBtn.Size = UDim2.new(1, -30, 0, 42)
@@ -246,7 +239,7 @@ hopGradient.Color = ColorSequence.new({
 })
 hopGradient.Parent = hopBtn
 
--- Settings Panel Frame (bottom area)
+-- settings frame
 local settingsFrame = Instance.new("Frame")
 settingsFrame.Name = "SettingsFrame"
 settingsFrame.Size = UDim2.new(1, -30, 0, 130)
@@ -254,7 +247,7 @@ settingsFrame.Position = UDim2.new(0, 15, 0, 122)
 settingsFrame.BackgroundTransparency = 1
 settingsFrame.Parent = contentFrame
 
--- 1. Mode Selection (Lowest Players vs. Random)
+-- 1. mode selection
 local modeLabel = Instance.new("TextLabel")
 modeLabel.Name = "ModeLabel"
 modeLabel.Size = UDim2.new(0.4, 0, 0, 25)
@@ -288,7 +281,7 @@ modeBtnStroke.Color = Color3.fromRGB(48, 48, 62)
 modeBtnStroke.Thickness = 1
 modeBtnStroke.Parent = modeBtn
 
--- 2. Auto Hop (Repeat) Toggle Option
+-- 2. auto hop toggle
 local autoHopLabel = Instance.new("TextLabel")
 autoHopLabel.Name = "AutoHopLabel"
 autoHopLabel.Size = UDim2.new(0.6, 0, 0, 25)
@@ -326,7 +319,7 @@ local thumbCorner1 = Instance.new("UICorner")
 thumbCorner1.CornerRadius = UDim.new(1, 0)
 thumbCorner1.Parent = autoHopThumb
 
--- 3. Hop Interval Option (seconds)
+-- 3. hop interval
 local intervalLabel = Instance.new("TextLabel")
 intervalLabel.Name = "IntervalLabel"
 intervalLabel.Size = UDim2.new(0.6, 0, 0, 25)
@@ -360,7 +353,7 @@ intervalStroke.Color = Color3.fromRGB(48, 48, 62)
 intervalStroke.Thickness = 1
 intervalStroke.Parent = intervalBox
 
--- 4. Auto Rejoin on Disconnect Option
+-- 4. auto rejoin
 local rejoinLabel = Instance.new("TextLabel")
 rejoinLabel.Name = "RejoinLabel"
 rejoinLabel.Size = UDim2.new(0.6, 0, 0, 25)
@@ -398,10 +391,7 @@ local thumbCorner2 = Instance.new("UICorner")
 thumbCorner2.CornerRadius = UDim.new(1, 0)
 thumbCorner2.Parent = rejoinThumb
 
----------------------------------------
--- COMPONENT STYLING & ANIMATIONS
----------------------------------------
-
+-- UI styling & hover effects
 local function updateStatus(text, isError)
     statusLabel.Text = "Status: " .. text
     if isError then
@@ -411,6 +401,7 @@ local function updateStatus(text, isError)
     end
 end
 
+-- hover/click animations
 local function setupButtonAnimations(btn, hoverBg, pressScale)
     local originalSize = btn.Size
     local originalColor = btn.BackgroundColor3
@@ -447,7 +438,7 @@ end
 setupButtonAnimations(closeBtn, Color3.fromRGB(150, 150, 160), 0.9)
 setupButtonAnimations(modeBtn, Color3.fromRGB(40, 40, 52), 0.95)
 
--- Draggable implementation
+-- drag system
 local function makeDraggable(dragFrame, moveFrame)
     local dragging
     local dragInput
@@ -488,16 +479,12 @@ end
 
 makeDraggable(headerFrame, mainFrame)
 
----------------------------------------
--- INTERACTION ROUTINES
----------------------------------------
-
--- Close window action
+-- button clicks
 closeBtn.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
--- Toggle Hop Mode
+-- change hop mode
 modeBtn.MouseButton1Click:Connect(function()
     if settings.hopMode == "Lowest" then
         settings.hopMode = "Random"
@@ -509,7 +496,7 @@ modeBtn.MouseButton1Click:Connect(function()
     saveSettings()
 end)
 
--- Visual toggles rendering
+-- toggle styling
 local function updateToggleVisual(track, thumb, value)
     local targetPos = value and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
     local targetColor = value and Color3.fromRGB(0, 180, 120) or Color3.fromRGB(40, 40, 50)
@@ -524,14 +511,11 @@ local function updateToggleVisual(track, thumb, value)
     }):Play()
 end
 
--- Set Initial visual states
+-- load initial toggle colors
 updateToggleVisual(autoHopTrack, autoHopThumb, settings.autoHop)
 updateToggleVisual(rejoinTrack, rejoinThumb, settings.autoRejoin)
 
----------------------------------------
--- SERVER HOPPING ENGINE
----------------------------------------
-
+-- hopping logic
 local hopping = false
 local countdownActive = false
 local countdownThread = nil
@@ -546,6 +530,7 @@ local function fetchServers(placeId)
     local http = (syn and syn.request) or (http and http.request) or http_request or (Fluxus and Fluxus.request) or request
 
     for _, url in ipairs(urls) do
+        -- method 1: executor http
         if http then
             local success, response = pcall(function()
                 return http({
@@ -559,6 +544,7 @@ local function fetchServers(placeId)
             end
         end
 
+        -- method 2: game httpget
         local success, response = pcall(function()
             return game:HttpGet(url)
         end)
@@ -616,10 +602,12 @@ local function executeServerHop()
         if settings.hopMode == "Random" then
             targetServer = validServers[math.random(1, #validServers)]
         else
+            -- sort player count asc
             table.sort(validServers, function(a, b)
                 return tonumber(a.playing) < tonumber(b.playing)
             end)
             
+            -- prefer 2+ players so we dont join empty/broken lobby
             for _, s in ipairs(validServers) do
                 if tonumber(s.playing) >= 2 then
                     targetServer = s
@@ -627,6 +615,7 @@ local function executeServerHop()
                 end
             end
             
+            -- fallback to first server
             if not targetServer then
                 targetServer = validServers[1]
             end
@@ -634,11 +623,13 @@ local function executeServerHop()
 
         if targetServer then
             updateStatus("Teleporting (" .. targetServer.playing .. "/" .. targetServer.maxPlayers .. ")...")
+            -- teleport to specific server
             local teleportSuccess, errorMsg = pcall(function()
                 TeleportService:TeleportToPlaceInstance(placeId, targetServer.id, localPlayer)
             end)
 
             if not teleportSuccess then
+                -- fallback to matchmaking
                 updateStatus("Teleport failed, trying default...", true)
                 task.wait(1.5)
                 pcall(function()
@@ -653,7 +644,7 @@ local function executeServerHop()
     end)
 end
 
--- Retry server hop automatically if the teleport fails
+-- retry if it failed
 TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
     if player == localPlayer then
         updateStatus("Teleport failed: " .. tostring(errorMessage) .. ". Retrying hop in 3s...", true)
@@ -664,7 +655,7 @@ end)
 
 hopBtn.MouseButton1Click:Connect(executeServerHop)
 
--- Hover/press effect for main action button
+-- hover animations for button
 hopBtn.MouseEnter:Connect(function()
     TweenService:Create(hopBtn, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
         BackgroundColor3 = Color3.fromRGB(0, 140, 255)
@@ -676,10 +667,7 @@ hopBtn.MouseLeave:Connect(function()
     }):Play()
 end)
 
----------------------------------------
--- AUTO-HOP SCHEDULER LOOP
----------------------------------------
-
+-- auto hop scheduler
 local function stopCountdown()
     countdownActive = false
     countdownThread = nil
@@ -712,7 +700,7 @@ local function handleAutoHopToggle()
     end
 end
 
--- Connect Auto Hop track interaction
+-- auto hop toggle click
 autoHopTrack.MouseButton1Click:Connect(function()
     settings.autoHop = not settings.autoHop
     updateToggleVisual(autoHopTrack, autoHopThumb, settings.autoHop)
@@ -720,7 +708,7 @@ autoHopTrack.MouseButton1Click:Connect(function()
     handleAutoHopToggle()
 end)
 
--- Connect Interval box focus lost (updates time and restarts timer)
+-- update interval on focus lost
 intervalBox.FocusLost:Connect(function(enterPressed)
     local val = tonumber(intervalBox.Text)
     if val and val >= 0 then
@@ -735,22 +723,20 @@ intervalBox.FocusLost:Connect(function(enterPressed)
     end
 end)
 
--- Connect Auto Rejoin track interaction
+-- rejoin click
 rejoinTrack.MouseButton1Click:Connect(function()
     settings.autoRejoin = not settings.autoRejoin
     updateToggleVisual(rejoinTrack, rejoinThumb, settings.autoRejoin)
     saveSettings()
 end)
 
----------------------------------------
--- AUTO REJOIN CONNECTION WRAPPER
----------------------------------------
-
+-- auto rejoin logic
 local errorTriggered = false
 GuiService.ErrorMessageChanged:Connect(function()
     if settings.autoRejoin and not errorTriggered then
         errorTriggered = true
         
+        -- rejoin notice
         local notifyGui = Instance.new("ScreenGui")
         notifyGui.Name = "RejoinNotice"
         notifyGui.Parent = parentGui
@@ -780,6 +766,7 @@ GuiService.ErrorMessageChanged:Connect(function()
         notifyText.TextColor3 = Color3.fromRGB(240, 240, 245)
         notifyText.Parent = notifyFrame
         
+        -- delay to avoid kick code 264
         task.wait(8)
         
         local success, err = pcall(function()
@@ -796,18 +783,15 @@ GuiService.ErrorMessageChanged:Connect(function()
     end
 end)
 
----------------------------------------
--- INITIALIZATION STARTUP
----------------------------------------
+-- main execution
+print("Hopper script loaded.")
 
-print("Fish It! Server Hopper loaded successfully.")
-
--- Start the countdown if autoHop setting is pre-loaded as enabled
+-- autostart if setting was enabled
 if settings.autoHop then
     if settings.hopInterval == 0 then
         task.spawn(function()
             updateStatus("Auto-hopping instantly...")
-            task.wait(1.5) -- Tiny safety wait to let Roblox player state initialize fully
+            task.wait(1.5) -- wait for player initialization
             executeServerHop()
         end)
     else

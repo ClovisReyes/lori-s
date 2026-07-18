@@ -23,12 +23,12 @@ local task_wait     = task.wait
 local task_spawn    = task.spawn
 
 -- 0. Clean up previous script execution instances (preventing double UI and thread leaks)
-if _G.WinterHUB_AutoTrade_Cleanup then
-    pcall(_G.WinterHUB_AutoTrade_Cleanup)
+if _G.NoirHub_AutoTrade_Cleanup then
+    pcall(_G.NoirHub_AutoTrade_Cleanup)
 end
 
 local script_id = os_clock()
-_G.WinterHUB_AutoTrade_ScriptID = script_id
+_G.NoirHub_AutoTrade_ScriptID = script_id
 
 local cloneref = cloneref or function(ref) return ref end
 
@@ -208,7 +208,7 @@ local function save_config()
             temp_config.trade_rarity_enabled = false
             
             local data = http_service:JSONEncode(temp_config)
-            writefile("WinterHUB_AutoTrade_Config.json", data)
+            writefile("NoirHub_AutoTrade_Config.json", data)
         end
     end)
 end
@@ -216,7 +216,7 @@ end
 local function load_config()
     pcall(function()
         if isfile and readfile and http_service then
-            local filename = "WinterHUB_AutoTrade_Config.json"
+            local filename = "NoirHub_AutoTrade_Config.json"
             if isfile(filename) then
                 local data = readfile(filename)
                 local loaded = http_service:JSONDecode(data)
@@ -1384,7 +1384,7 @@ local function run_auto_trade_loop()
     
     -- 1. Loop for Fish
     task_spawn(function()
-        while _G.WinterHUB_AutoTrade_ScriptID == script_id do
+        while _G.NoirHub_AutoTrade_ScriptID == script_id do
             if config.enabled and config.trade_fish_enabled then
                 if not cache.is_trading_active then
                     cache.is_trading_active = true
@@ -1398,7 +1398,7 @@ local function run_auto_trade_loop()
 
     -- 1.5 Loop for Rarity
     task_spawn(function()
-        while _G.WinterHUB_AutoTrade_ScriptID == script_id do
+        while _G.NoirHub_AutoTrade_ScriptID == script_id do
             if config.enabled and config.trade_rarity_enabled then
                 if not cache.is_trading_active then
                     cache.is_trading_active = true
@@ -1412,7 +1412,7 @@ local function run_auto_trade_loop()
 
     -- 2. Loop for Enchants & Gears
     task_spawn(function()
-        while _G.WinterHUB_AutoTrade_ScriptID == script_id do
+        while _G.NoirHub_AutoTrade_ScriptID == script_id do
             if config.enabled and config.trade_enchants_enabled then
                 if not cache.is_trading_active then
                     cache.is_trading_active = true
@@ -1430,7 +1430,7 @@ local function run_auto_trade_loop()
 
     -- 3. Loop for Coins
     task_spawn(function()
-        while _G.WinterHUB_AutoTrade_ScriptID == script_id do
+        while _G.NoirHub_AutoTrade_ScriptID == script_id do
             if config.enabled and config.trade_coins_enabled and config.target_coin_amount > 0 then
                 if not cache.is_trading_active then
                     cache.is_trading_active = true
@@ -1534,13 +1534,13 @@ local function create_ui()
     -- Destroy old GUIs in CoreGui/gethui
     pcall(function()
         local core = gethui and gethui() or game:GetService("CoreGui")
-        local old = core:FindFirstChild("WinterHUB_AutoTrade") or core:FindFirstChild("AutoTrade")
+        local old = core:FindFirstChild("NoirHub_AutoTrade") or core:FindFirstChild("AutoTrade")
         if old then old:Destroy() end
     end)
     -- Destroy old GUIs in PlayerGui
     pcall(function()
         local pgui = local_player:FindFirstChild("PlayerGui")
-        local old = pgui and (pgui:FindFirstChild("WinterHUB_AutoTrade") or pgui:FindFirstChild("AutoTrade"))
+        local old = pgui and (pgui:FindFirstChild("NoirHub_AutoTrade") or pgui:FindFirstChild("AutoTrade"))
         if old then old:Destroy() end
     end)
 
@@ -1554,7 +1554,7 @@ local function create_ui()
 
     -- Periodically force UI to top and keep it enabled to bypass game script disabling
     task_spawn(function()
-        while _G.WinterHUB_AutoTrade_ScriptID == script_id do
+        while _G.NoirHub_AutoTrade_ScriptID == script_id do
             task_wait(1)
             pcall(function()
                 if gui and gui.Parent == parent_gui then
@@ -3477,6 +3477,25 @@ local function create_ui()
         if enchant_panel.Visible then
             populate_enchants_panel(enchant_dropdown_btn)
         end
+        
+        -- Update status box with inventory list
+        local counts = get_inventory_enchants()
+        local status_lines = { "Inventory:" }
+        local sorted_names = {}
+        for name, _ in pairs(counts) do
+            table_insert(sorted_names, name)
+        end
+        table_sort(sorted_names)
+        
+        for _, name in ipairs(sorted_names) do
+            local qty = counts[name]
+            local short_name = string.gsub(name, "%s*Enchant%s*Stone", "")
+            table_insert(status_lines, short_name .. " x" .. qty)
+        end
+        
+        cache.enchant_status_text = table.concat(status_lines, "\n")
+        cache.enchant_status_details = ""
+        
         task_wait(1)
         es_refresh.Text = "Check Enchant Stones"
     end)
@@ -3950,24 +3969,24 @@ pcall(function()
     toggle_auto_accept(config.auto_accept_enabled)
 end)
 
-_G.WinterHUB_AutoTrade_Cleanup = function()
+_G.NoirHub_AutoTrade_Cleanup = function()
     -- Disconnect global event connections
     if auto_accept_conn then pcall(function() auto_accept_conn:Disconnect() end) end
     if trade_started_conn then pcall(function() trade_started_conn:Disconnect() end) end
     if trade_ended_conn then pcall(function() trade_ended_conn:Disconnect() end) end
     
     -- Terminate active auto trade loops
-    _G.WinterHUB_AutoTrade_ScriptID = nil
+    _G.NoirHub_AutoTrade_ScriptID = nil
     
     -- Destroy old GUI in CoreGui/gethui and PlayerGui
     pcall(function()
         local core = gethui and gethui() or game:GetService("CoreGui")
-        local old = core:FindFirstChild("WinterHUB_AutoTrade") or core:FindFirstChild("AutoTrade")
+        local old = core:FindFirstChild("NoirHub_AutoTrade") or core:FindFirstChild("AutoTrade")
         if old then old:Destroy() end
     end)
     pcall(function()
         local pgui = local_player:FindFirstChild("PlayerGui")
-        local old = pgui and (pgui:FindFirstChild("WinterHUB_AutoTrade") or pgui:FindFirstChild("AutoTrade"))
+        local old = pgui and (pgui:FindFirstChild("NoirHub_AutoTrade") or pgui:FindFirstChild("AutoTrade"))
         if old then old:Destroy() end
     end)
 end

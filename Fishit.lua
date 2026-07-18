@@ -2707,6 +2707,7 @@ local function create_ui()
 
         local content_layout = Instance.new("UIListLayout")
         content_layout.Padding = UDim.new(0, 6)
+        content_layout.SortOrder = Enum.SortOrder.LayoutOrder
         content_layout.Parent = content
 
         local expanded = false
@@ -3034,7 +3035,8 @@ local function create_ui()
                 if state == active and not instant then return end
                 active = state
                 update_visual(state, instant)
-            end
+            end,
+            Frame = row
         }
     end
 
@@ -3068,6 +3070,8 @@ local function create_ui()
     -- 2. Trade By Name
     local byname_content, byname_toggle = create_accordion(settings_panel, "Trade By Name")
     local status_box = Instance.new("Frame")
+    status_box.Name = "1_StatusBox"
+    status_box.LayoutOrder = 1
     status_box.Size = UDim2.new(1, 0, 0, 58)
     status_box.BackgroundColor3 = CARD_COLOR
     status_box.BorderSizePixel = 0
@@ -3105,9 +3109,11 @@ local function create_ui()
     status_val_lbl.TextYAlignment = Enum.TextYAlignment.Top
     status_val_lbl.TextWrapped = true
     status_val_lbl.Parent = status_box
-
+ 
     -- Select Item Row
     local item_row = Instance.new("Frame")
+    item_row.Name = "2_ItemRow"
+    item_row.LayoutOrder = 2
     item_row.Size = UDim2.new(1, 0, 0, 22)
     item_row.BackgroundTransparency = 1
     item_row.Active = false
@@ -3181,40 +3187,10 @@ local function create_ui()
         end
     end)
 
-    -- Refresh Fish Items Button
-    local refresh_btn = Instance.new("TextButton")
-    refresh_btn.Size = UDim2.new(1, 0, 0, 26)
-    refresh_btn.BackgroundColor3 = Color3.fromRGB(192, 0, 192)
-    refresh_btn.Text = "Refresh Fish Items"
-    refresh_btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    refresh_btn.TextSize = 9
-    refresh_btn.FontFace = font_bold
-    refresh_btn.Active = true
-    refresh_btn.Parent = byname_content
-
-    local refresh_btn_c = Instance.new("UICorner")
-    refresh_btn_c.CornerRadius = UDim.new(0, 5)
-    refresh_btn_c.Parent = refresh_btn
-
-    refresh_btn.MouseEnter:Connect(function()
-        refresh_btn.BackgroundColor3 = Color3.fromRGB(240, 50, 240)
-    end)
-    refresh_btn.MouseLeave:Connect(function()
-        refresh_btn.BackgroundColor3 = Color3.fromRGB(192, 0, 192)
-    end)
-
-    refresh_btn.Activated:Connect(function()
-        refresh_btn.Text = "Fish Items Refreshed!"
-        cache.loaded_fish = get_owned_fish_options()
-        if item_panel.Visible then
-            populate_items_panel(fish_dropdown_btn)
-        end
-        task_wait(1)
-        refresh_btn.Text = "Refresh Fish Items"
-    end)
-
     -- Amount Row
     local amount_row = Instance.new("Frame")
+    amount_row.Name = "3_AmountRow"
+    amount_row.LayoutOrder = 3
     amount_row.Size = UDim2.new(1, 0, 0, 22)
     amount_row.BackgroundTransparency = 1
     amount_row.Active = false
@@ -3259,6 +3235,40 @@ local function create_ui()
         end)
     end)
 
+    -- Refresh Fish Items Button
+    local refresh_btn = Instance.new("TextButton")
+    refresh_btn.Name = "4_RefreshButton"
+    refresh_btn.LayoutOrder = 4
+    refresh_btn.Size = UDim2.new(1, 0, 0, 26)
+    refresh_btn.BackgroundColor3 = Color3.fromRGB(192, 0, 192)
+    refresh_btn.Text = "Refresh Fish Items"
+    refresh_btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    refresh_btn.TextSize = 9
+    refresh_btn.FontFace = font_bold
+    refresh_btn.Active = true
+    refresh_btn.Parent = byname_content
+
+    local refresh_btn_c = Instance.new("UICorner")
+    refresh_btn_c.CornerRadius = UDim.new(0, 5)
+    refresh_btn_c.Parent = refresh_btn
+
+    refresh_btn.MouseEnter:Connect(function()
+        refresh_btn.BackgroundColor3 = Color3.fromRGB(240, 50, 240)
+    end)
+    refresh_btn.MouseLeave:Connect(function()
+        refresh_btn.BackgroundColor3 = Color3.fromRGB(192, 0, 192)
+    end)
+
+    refresh_btn.Activated:Connect(function()
+        refresh_btn.Text = "Fish Items Refreshed!"
+        cache.loaded_fish = get_owned_fish_options()
+        if item_panel.Visible then
+            populate_items_panel(fish_dropdown_btn)
+        end
+        task_wait(1)
+        refresh_btn.Text = "Refresh Fish Items"
+    end)
+
     -- Toggle Row
     byname_toggle_ctrl = create_toggle(byname_content, "Start Trade ByName", (config.enabled and config.trade_fish_enabled), function(active)
         if active then
@@ -3279,15 +3289,21 @@ local function create_ui()
             decline_active_trade()
         end
     end)
+    byname_toggle_ctrl.Frame.LayoutOrder = 5
+    byname_toggle_ctrl.Frame.Name = "5_StartTradeToggle"
 
     byname_fav_toggle = create_toggle(byname_content, "Trade Favorite Items", config.trade_favorited, function(active)
         sync_fav_toggles(active)
     end)
+    byname_fav_toggle.Frame.LayoutOrder = 6
+    byname_fav_toggle.Frame.Name = "6_FavToggle"
 
     -- 3. Trade Enchant Stone
     local enchant_content, enchant_toggle = create_accordion(settings_panel, "Trade Enchant Stone")
     -- Status Box
     local enchant_status_box = Instance.new("Frame")
+    enchant_status_box.Name = "1_StatusBox"
+    enchant_status_box.LayoutOrder = 1
     enchant_status_box.Size = UDim2.new(1, 0, 0, 80)
     enchant_status_box.BackgroundColor3 = CARD_COLOR
     enchant_status_box.BorderSizePixel = 0
@@ -3328,6 +3344,8 @@ local function create_ui()
 
     -- Stone Type Row
     local stone_row = Instance.new("Frame")
+    stone_row.Name = "2_StoneRow"
+    stone_row.LayoutOrder = 2
     stone_row.Size = UDim2.new(1, 0, 0, 22)
     stone_row.BackgroundTransparency = 1
     stone_row.Active = false
@@ -3403,6 +3421,8 @@ local function create_ui()
 
     -- Amount Enchant Stone Row
     local es_amount_row = Instance.new("Frame")
+    es_amount_row.Name = "3_AmountRow"
+    es_amount_row.LayoutOrder = 3
     es_amount_row.Size = UDim2.new(1, 0, 0, 22)
     es_amount_row.BackgroundTransparency = 1
     es_amount_row.Active = false
@@ -3449,6 +3469,8 @@ local function create_ui()
 
     -- Check Enchant Stones Button
     local es_refresh = Instance.new("TextButton")
+    es_refresh.Name = "4_RefreshButton"
+    es_refresh.LayoutOrder = 4
     es_refresh.Size = UDim2.new(1, 0, 0, 26)
     es_refresh.BackgroundColor3 = Color3.fromRGB(192, 0, 192)
     es_refresh.Text = "Check Enchant Stones"
@@ -3523,12 +3545,15 @@ local function create_ui()
             decline_active_trade()
         end
     end)
+    enchant_toggle_ctrl.Frame.LayoutOrder = 5
+    enchant_toggle_ctrl.Frame.Name = "5_StartTradeToggle"
 
 
     -- 3.5 Trade By Rarity
     local rarity_content, rarity_toggle = create_accordion(settings_panel, "Trade By Rarity")
-    -- Status Box
     local rarity_status_box = Instance.new("Frame")
+    rarity_status_box.Name = "1_StatusBox"
+    rarity_status_box.LayoutOrder = 1
     rarity_status_box.Size = UDim2.new(1, 0, 0, 58)
     rarity_status_box.BackgroundColor3 = CARD_COLOR
     rarity_status_box.BorderSizePixel = 0
@@ -3569,6 +3594,8 @@ local function create_ui()
 
     -- Select Rarity Dropdown Row
     local r_row = Instance.new("Frame")
+    r_row.Name = "2_RarityRow"
+    r_row.LayoutOrder = 2
     r_row.Size = UDim2.new(1, 0, 0, 22)
     r_row.BackgroundTransparency = 1
     r_row.Active = false
@@ -3644,6 +3671,8 @@ local function create_ui()
 
     -- Amount Rarity Row (Textbox)
     local r_amount_row = Instance.new("Frame")
+    r_amount_row.Name = "3_AmountRow"
+    r_amount_row.LayoutOrder = 3
     r_amount_row.Size = UDim2.new(1, 0, 0, 22)
     r_amount_row.BackgroundTransparency = 1
     r_amount_row.Active = false
@@ -3690,6 +3719,8 @@ local function create_ui()
 
     -- Refresh Fish Rarity Button
     local r_refresh = Instance.new("TextButton")
+    r_refresh.Name = "4_RefreshButton"
+    r_refresh.LayoutOrder = 4
     r_refresh.Size = UDim2.new(1, 0, 0, 26)
     r_refresh.BackgroundColor3 = Color3.fromRGB(192, 0, 192)
     r_refresh.Text = "Refresh Fish Rarity"
@@ -3736,15 +3767,21 @@ local function create_ui()
             decline_active_trade()
         end
     end)
+    rarity_toggle_ctrl.Frame.LayoutOrder = 5
+    rarity_toggle_ctrl.Frame.Name = "5_StartTradeToggle"
 
     rarity_fav_toggle = create_toggle(rarity_content, "Trade Favorite Items", config.trade_favorited, function(active)
         sync_fav_toggles(active)
     end)
+    rarity_fav_toggle.Frame.LayoutOrder = 6
+    rarity_fav_toggle.Frame.Name = "6_FavToggle"
 
     -- 4. Trade By Coin
     local coin_content, coin_toggle = create_accordion(settings_panel, "Trade By Coin")
     -- Status Box
     local coin_status_box = Instance.new("Frame")
+    coin_status_box.Name = "1_StatusBox"
+    coin_status_box.LayoutOrder = 1
     coin_status_box.Size = UDim2.new(1, 0, 0, 58)
     coin_status_box.BackgroundColor3 = CARD_COLOR
     coin_status_box.BorderSizePixel = 0
@@ -3785,6 +3822,8 @@ local function create_ui()
 
     -- Target Coins Row
     local coin_row = Instance.new("Frame")
+    coin_row.Name = "2_CoinRow"
+    coin_row.LayoutOrder = 2
     coin_row.Size = UDim2.new(1, 0, 0, 22)
     coin_row.BackgroundTransparency = 1
     coin_row.Active = false
@@ -3851,13 +3890,19 @@ local function create_ui()
             decline_active_trade()
         end
     end)
+    coin_toggle_ctrl.Frame.LayoutOrder = 3
+    coin_toggle_ctrl.Frame.Name = "3_StartTradeToggle"
 
     coin_fav_toggle = create_toggle(coin_content, "Trade Favorite Items", config.trade_favorited, function(active)
         sync_fav_toggles(active)
     end)
+    coin_fav_toggle.Frame.LayoutOrder = 4
+    coin_fav_toggle.Frame.Name = "4_FavToggle"
 
     -- Reset Stats By Coin Button
     local coin_reset = Instance.new("TextButton")
+    coin_reset.Name = "5_ResetStatsButton"
+    coin_reset.LayoutOrder = 5
     coin_reset.Size = UDim2.new(1, 0, 0, 26)
     coin_reset.BackgroundColor3 = Color3.fromRGB(192, 0, 192)
     coin_reset.Text = "Reset Stats By Coin"

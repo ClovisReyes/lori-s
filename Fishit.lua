@@ -720,9 +720,6 @@ local function start_trade_session(target_player, mode)
         if not success then
             cache.last_trade_time = tick()
             update_status("Idle", "Failed: " .. (err or "Declined"))
-            if err == "You aren't able to trade!" then
-                config.enabled = false
-            end
             return false, err
         end
 

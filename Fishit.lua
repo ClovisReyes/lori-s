@@ -1377,13 +1377,20 @@ local function try_trade_by_coin()
 end
 
 local function run_auto_trade_loop()
+    if cache.loop_running then return end
+    cache.loop_running = true
+
     log_inventory_fish()
     
     -- 1. Loop for Fish
     task_spawn(function()
         while _G.WinterHUB_AutoTrade_ScriptID == script_id do
             if config.enabled and config.trade_fish_enabled then
-                pcall(try_trade_fish)
+                if not cache.is_trading_active then
+                    cache.is_trading_active = true
+                    pcall(try_trade_fish)
+                    cache.is_trading_active = false
+                end
             end
             task_wait(3)
         end
@@ -1393,7 +1400,11 @@ local function run_auto_trade_loop()
     task_spawn(function()
         while _G.WinterHUB_AutoTrade_ScriptID == script_id do
             if config.enabled and config.trade_rarity_enabled then
-                pcall(try_trade_rarity)
+                if not cache.is_trading_active then
+                    cache.is_trading_active = true
+                    pcall(try_trade_rarity)
+                    cache.is_trading_active = false
+                end
             end
             task_wait(3)
         end
@@ -1403,11 +1414,15 @@ local function run_auto_trade_loop()
     task_spawn(function()
         while _G.WinterHUB_AutoTrade_ScriptID == script_id do
             if config.enabled and config.trade_enchants_enabled then
-                pcall(function()
-                    if config.trade_enchants_enabled and #config.selected_items > 0 then
-                        try_trade_enchant()
-                    end
-                end)
+                if not cache.is_trading_active then
+                    cache.is_trading_active = true
+                    pcall(function()
+                        if config.trade_enchants_enabled and #config.selected_items > 0 then
+                            try_trade_enchant()
+                        end
+                    end)
+                    cache.is_trading_active = false
+                end
             end
             task_wait(3)
         end
@@ -1417,7 +1432,11 @@ local function run_auto_trade_loop()
     task_spawn(function()
         while _G.WinterHUB_AutoTrade_ScriptID == script_id do
             if config.enabled and config.trade_coins_enabled and config.target_coin_amount > 0 then
-                pcall(try_trade_by_coin)
+                if not cache.is_trading_active then
+                    cache.is_trading_active = true
+                    pcall(try_trade_by_coin)
+                    cache.is_trading_active = false
+                end
             end
             task_wait(3)
         end

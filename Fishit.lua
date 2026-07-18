@@ -1095,10 +1095,8 @@ local function try_trade_enchant()
             if item_data then
                 local has_all_enchant = table_find(config.selected_items, "All") ~= nil
                 if has_all_enchant or table_find(config.selected_items, item_data.Data.Name) then
-                    if not (item.Favorited and not config.trade_favorited) then
-                        if not table_find(cache.processed_trades, item.UUID) then
-                            table_insert(items_to_trade, item)
-                        end
+                    if not table_find(cache.processed_trades, item.UUID) then
+                        table_insert(items_to_trade, item)
                     end
                 end
             end
@@ -1631,7 +1629,7 @@ local function create_ui()
 
     local function get_owned_enchant_options()
         local list = {}
-        local counts = get_inventory_enchants()
+        local counts = get_inventory_enchants(true)
         for name, qty in pairs(counts) do
             table_insert(list, name .. " (x" .. qty .. ")")
         end
@@ -3490,6 +3488,9 @@ local function create_ui()
         for _, name in ipairs(sorted_names) do
             local qty = counts[name]
             local short_name = string.gsub(name, "%s*Enchant%s*Stone", "")
+            if short_name == "" then
+                short_name = "Enchant Stone"
+            end
             table_insert(status_lines, short_name .. " x" .. qty)
         end
         
@@ -3523,9 +3524,6 @@ local function create_ui()
         end
     end)
 
-    enchant_fav_toggle = create_toggle(enchant_content, "Trade Favorite Items", config.trade_favorited, function(active)
-        sync_fav_toggles(active)
-    end)
 
     -- 3.5 Trade By Rarity
     local rarity_content, rarity_toggle = create_accordion(settings_panel, "Trade By Rarity")

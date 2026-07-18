@@ -290,7 +290,7 @@ local function get_runic_count()
     return get_item_count("Runic Enchant Stone")
 end
 
-local function get_inventory_enchants()
+local function get_inventory_enchants(bypass_favorited)
     local enchants = {}
     local success, err = pcall(function()
         if player_data then
@@ -300,7 +300,7 @@ local function get_inventory_enchants()
             for _, item in ipairs(items) do
                 if item.Id then
                     local include_item = true
-                    if item.Favorited and not config.trade_favorited then
+                    if not bypass_favorited and item.Favorited and not config.trade_favorited then
                         include_item = false
                     end
 
@@ -3290,7 +3290,7 @@ local function create_ui()
     local enchant_content, enchant_toggle = create_accordion(settings_panel, "Trade Enchant Stone")
     -- Status Box
     local enchant_status_box = Instance.new("Frame")
-    enchant_status_box.Size = UDim2.new(1, 0, 0, 58)
+    enchant_status_box.Size = UDim2.new(1, 0, 0, 80)
     enchant_status_box.BackgroundColor3 = CARD_COLOR
     enchant_status_box.BorderSizePixel = 0
     enchant_status_box.Parent = enchant_content
@@ -3316,7 +3316,7 @@ local function create_ui()
     enchant_status_title.Parent = enchant_status_box
 
     enchant_status_val_lbl = Instance.new("TextLabel")
-    enchant_status_val_lbl.Size = UDim2.new(1, -10, 0, 30)
+    enchant_status_val_lbl.Size = UDim2.new(1, -10, 0, 52)
     enchant_status_val_lbl.Position = UDim2.new(0, 10, 0, 22)
     enchant_status_val_lbl.BackgroundTransparency = 1
     enchant_status_val_lbl.Text = "Idle"
@@ -3479,7 +3479,7 @@ local function create_ui()
         end
         
         -- Update status box with inventory list
-        local counts = get_inventory_enchants()
+        local counts = get_inventory_enchants(true)
         local status_lines = { "Inventory:" }
         local sorted_names = {}
         for name, _ in pairs(counts) do
@@ -3495,6 +3495,9 @@ local function create_ui()
         
         cache.enchant_status_text = table.concat(status_lines, "\n")
         cache.enchant_status_details = ""
+        if enchant_status_val_lbl then
+            enchant_status_val_lbl.Text = cache.enchant_status_text
+        end
         
         task_wait(1)
         es_refresh.Text = "Check Enchant Stones"

@@ -808,14 +808,12 @@ local function try_trade_fish()
     end
 
     if #items_to_trade == 0 then
-        if config.quantity > 0 then
-            config.enabled = false
-            if byname_toggle_ctrl then
-                byname_toggle_ctrl.set_state(false)
-                config.trade_fish_enabled = false
-            end
-            save_config()
+        config.enabled = false
+        if byname_toggle_ctrl then
+            byname_toggle_ctrl.set_state(false)
+            config.trade_fish_enabled = false
         end
+        save_config()
         return
     end
 
@@ -954,14 +952,12 @@ local function try_trade_rarity()
     end
 
     if #items_to_trade == 0 then
-        if config.quantity > 0 then
-            config.enabled = false
-            if rarity_toggle_ctrl then
-                rarity_toggle_ctrl.set_state(false)
-                config.trade_rarity_enabled = false
-            end
-            save_config()
+        config.enabled = false
+        if rarity_toggle_ctrl then
+            rarity_toggle_ctrl.set_state(false)
+            config.trade_rarity_enabled = false
         end
+        save_config()
         return
     end
 
@@ -1101,14 +1097,12 @@ local function try_trade_enchant()
     end
 
     if #items_to_trade == 0 then
-        if config.quantity > 0 then
-            config.enabled = false
-            if enchant_toggle_ctrl then
-                enchant_toggle_ctrl.set_state(false)
-                config.trade_enchants_enabled = false
-            end
-            save_config()
+        config.enabled = false
+        if enchant_toggle_ctrl then
+            enchant_toggle_ctrl.set_state(false)
+            config.trade_enchants_enabled = false
         end
+        save_config()
         return
     end
 

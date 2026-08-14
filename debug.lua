@@ -2,7 +2,6 @@ if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
-local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local PlayerGui = (Players.LocalPlayer or Players.PlayerAdded:Wait()):WaitForChild("PlayerGui")
@@ -27,15 +26,8 @@ end
 Lighting.ChildAdded:Connect(disableBlur)
 
 -- ============================================================
--- 2. POPUP HANDLER
+-- 2. CARI TOMBOL CLOSE
 -- ============================================================
-local ALWAYS_HIDE = {
-    ["!!! Daily Login"] = true,
-    ["!!! Update Log"] = true,
-    ["Quest"] = true
-}
-
--- Cari tombol close di dalam popup
 local function findCloseButton(popup)
     local main = popup:FindFirstChild("Main")
     if not main then return nil end
@@ -54,53 +46,14 @@ local function findCloseButton(popup)
     return nil
 end
 
--- Coba close popup secara otomatis (tanpa VirtualInputManager)
-local function tryAutoClose(popup)
-    local closeBtn = findCloseButton(popup)
-    if not closeBtn then return false end
-
-    -- Method 1: firetouchinterest (aman, bukan VIM)
-    local ok1 = pcall(function()
-        firetouchinterest(closeBtn, closeBtn, 0)
-    end)
-    if ok1 then
-        task.wait(0.05)
-        pcall(function()
-            firetouchinterest(closeBtn, closeBtn, 1)
-        end)
-        task.wait(0.5)
-        if popup:IsA("ScreenGui") and not popup.Enabled then return true end
-        if popup.Parent == nil then return true end
-    end
-
-    -- Method 2: fireclick
-    pcall(function() fireclick(closeBtn) end)
-    task.wait(0.5)
-    if popup:IsA("ScreenGui") and not popup.Enabled then return true end
-
-    -- Method 3: conn.Function langsung
-    pcall(function()
-        for _, conn in pairs(getconnections(closeBtn.InputBegan)) do
-            conn.Function({
-                UserInputType = Enum.UserInputType.Touch,
-                UserInputState = Enum.UserInputState.Begin,
-                Position = Vector3.new(0, 0, 0),
-                Delta = Vector3.new(0, 0, 0),
-                KeyCode = Enum.KeyCode.Unknown
-            }, false)
-        end
-    end)
-    task.wait(0.5)
-    if popup:IsA("ScreenGui") and not popup.Enabled then return true end
-
-    return false
-end
-
--- Fallback: buat popup transparan, tampilkan HANYA tombol close
-local function showOnlyCloseButton(popup)
+-- ============================================================
+-- 3. TRANSPARAN-KAN POPUP, SISAKAN TOMBOL CLOSE
+--    User tap 1x → game close & restore HUD sendiri
+-- ============================================================
+local function transparentizePopup(popup)
     local closeBtn = findCloseButton(popup)
 
-    -- Transparan-kan SEMUA elemen (tapi jangan Visible=false, agar child tetap render)
+    -- Sembunyikan SEMUA konten visual (tapi jangan Visible=false)
     for _, desc in ipairs(popup:GetDescendants()) do
         if desc ~= closeBtn then
             pcall(function()
@@ -108,10 +61,14 @@ local function showOnlyCloseButton(popup)
                     desc.BackgroundTransparency = 1
                     desc.Active = false
                 end
+            end)
+            pcall(function()
                 if desc:IsA("TextLabel") or desc:IsA("TextButton") then
                     desc.TextTransparency = 1
                     desc.TextStrokeTransparency = 1
                 end
+            end)
+            pcall(function()
                 if desc:IsA("ImageLabel") or desc:IsA("ImageButton") then
                     desc.ImageTransparency = 1
                 end
@@ -119,152 +76,108 @@ local function showOnlyCloseButton(popup)
         end
     end
 
-    -- Highlight close button agar mudah ditemukan
+    -- Highlight tombol close
     if closeBtn then
         pcall(function()
             closeBtn.Visible = true
             closeBtn.Active = true
             closeBtn.BackgroundTransparency = 0
-            closeBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-            closeBtn.ImageTransparency = 0.5
+            closeBtn.BackgroundColor3 = Color3.fromRGB(255, 30, 30)
+            closeBtn.ImageTransparency = 1
             closeBtn.ZIndex = 100
         end)
 
-        -- Tambah label petunjuk
-        local hint = Instance.new("TextLabel")
-        hint.Name = "CloseHint"
-        hint.Text = "TAP X UNTUK CLOSE"
-        hint.TextColor3 = Color3.fromRGB(255, 255, 0)
-        hint.TextSize = 18
-        hint.Font = Enum.Font.GothamBold
-        hint.BackgroundTransparency = 0.3
-        hint.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        hint.Size = UDim2.new(0, 220, 0, 35)
-        hint.TextXAlignment = Enum.TextXAlignment.Center
-        hint.Parent = closeBtn
-        hint.Position = UDim2.new(0.5, -110, 1, 5)
-        hint.ZIndex = 101
+        -- Buat label "TAP DISINI"
+        pcall(function()
+            local hint = Instance.new("TextLabel")
+            hint.Name = "Hint"
+            hint.Text = "⬆ TAP UNTUK CLOSE ⬆"
+            hint.TextColor3 = Color3.fromRGB(255, 255, 0)
+            hint.TextSize = 16
+            hint.Font = Enum.Font.GothamBold
+            hint.BackgroundTransparency = 0.2
+            hint.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+            hint.Size = UDim2.new(0, 230, 0, 30)
+            hint.Position = UDim2.new(0.5, -115, 1, 5)
+            hint.ZIndex = 101
+            hint.Parent = closeBtn
+        end)
     end
 end
 
--- Kill scripts di dalam popup (untuk popup yang belum sempat jalan)
-local function killScriptsInside(gui)
+-- ============================================================
+-- 4. KILL SCRIPTS (untuk popup berikutnya yg belum jalan)
+-- ============================================================
+local function killAndHide(gui)
     pcall(function()
         for _, desc in ipairs(gui:GetDescendants()) do
             if desc:IsA("LocalScript") then
                 desc.Disabled = true
             end
         end
-        gui.DescendantAdded:Connect(function(desc)
-            if desc:IsA("LocalScript") then
-                pcall(function() desc.Disabled = true end)
-            end
+    end)
+    pcall(function()
+        gui.Enabled = false
+        gui:GetPropertyChangedSignal("Enabled"):Connect(function()
+            if gui.Enabled then gui.Enabled = false end
         end)
     end)
 end
 
 -- ============================================================
--- 3. RESTORE HUD (fallback jika auto-close gagal)
+-- 5. HANDLER UTAMA
 -- ============================================================
-local function restoreHUD()
-    local targets = {
-        {gui = "Backpack", child = "Display"},
-        {gui = "Events",   child = "Frame"},
-        {gui = "Compass",  child = "Inside"}
-    }
-    for _, t in ipairs(targets) do
-        local gui = PlayerGui:FindFirstChild(t.gui)
-        if gui then
-            pcall(function() gui.Enabled = true end)
-            local child = gui:FindFirstChild(t.child)
-            if child then
-                pcall(function() child.Visible = true end)
-            end
-        end
-    end
-end
-
--- ============================================================
--- 4. HANDLER UTAMA
--- ============================================================
-local processedPopups = {}
-local firstPopupHandled = false
+local firstHandled = false
+local processed = {}
 
 local function handleChild(child)
-    if not ALWAYS_HIDE[child.Name] then return end
-    if processedPopups[child] then return end
-    processedPopups[child] = true
+    if not child:IsA("ScreenGui") then return end
+    if processed[child] then return end
 
-    -- Quest: langsung hide saja (tidak perlu close)
-    if child.Name == "Quest" then
-        pcall(function()
-            if child:IsA("ScreenGui") then
-                child.Enabled = false
-                child:GetPropertyChangedSignal("Enabled"):Connect(function()
-                    if child.Enabled then child.Enabled = false end
-                end)
-            end
-        end)
-        return
-    end
+    local name = child.Name
 
-    -- Untuk popup berikutnya (bukan pertama): kill scripts dulu
-    if firstPopupHandled then
-        killScriptsInside(child)
+    -- Quest: langsung hide
+    if name == "Quest" then
+        processed[child] = true
         pcall(function()
             child.Enabled = false
             child:GetPropertyChangedSignal("Enabled"):Connect(function()
-                if child.Enabled then
-                    killScriptsInside(child)
-                    child.Enabled = false
-                end
+                if child.Enabled then child.Enabled = false end
             end)
         end)
-        restoreHUD()
         return
     end
 
-    -- Popup pertama: coba auto-close
-    firstPopupHandled = true
+    -- Daily Login / Update Log
+    if name == "!!! Daily Login" or name == "!!! Update Log" then
+        processed[child] = true
 
-    task.spawn(function()
-        local closed = tryAutoClose(child)
-
-        if closed then
-            -- Berhasil! Game menangani restore HUD sendiri
-            -- Cegah re-appear
-            pcall(function()
-                child:GetPropertyChangedSignal("Enabled"):Connect(function()
-                    if child.Enabled then
-                        killScriptsInside(child)
-                        child.Enabled = false
-                    end
-                end)
-            end)
+        if firstHandled then
+            -- Popup ke-2 dst: script sudah jalan, kill + hide langsung
+            killAndHide(child)
         else
-            -- Auto-close gagal → tampilkan hanya tombol close
-            showOnlyCloseButton(child)
+            -- Popup pertama: transparan-kan, user tap Close 1x
+            firstHandled = true
+            transparentizePopup(child)
 
-            -- Juga coba restore HUD sebagai fallback
-            task.spawn(function()
-                local conn
-                local startTime = tick()
-                conn = RunService.Heartbeat:Connect(function()
-                    if tick() - startTime > 3 then
-                        conn:Disconnect()
-                        return
-                    end
-                    restoreHUD()
-                end)
+            -- Setelah user close, cegah muncul lagi
+            child:GetPropertyChangedSignal("Enabled"):Connect(function()
+                if not child.Enabled then
+                    -- Game sudah close popup → cegah re-appear
+                    task.wait(2)
+                    child:GetPropertyChangedSignal("Enabled"):Connect(function()
+                        if child.Enabled then child.Enabled = false end
+                    end)
+                end
             end)
         end
-    end)
+    end
 end
 
--- Proses child yang sudah ada
+-- Proses yang sudah ada
 for _, child in ipairs(PlayerGui:GetChildren()) do
     handleChild(child)
 end
 
--- Monitor child baru
+-- Monitor baru
 PlayerGui.ChildAdded:Connect(handleChild)

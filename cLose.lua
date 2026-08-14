@@ -8,10 +8,7 @@ local Rep = game:GetService("ReplicatedStorage")
 local Player = Players.LocalPlayer or Players.PlayerAdded:Wait()
 local PlayerGui = Player:WaitForChild("PlayerGui")
 
--- ============================================================
--- 1. LOAD MASTER GUI CONTROLLER DARI GAME
--- ============================================================
-local GuiControl = nil
+local GuiControl
 pcall(function()
     local modules = Rep:WaitForChild("Modules", 5)
     if modules and modules:FindFirstChild("GuiControl") then
@@ -19,20 +16,22 @@ pcall(function()
     end
 end)
 
-local function triggerGameRestoreHUD()
+local function restoreHUD()
     if not GuiControl then return end
+    pcall(function() GuiControl.RestoreHUD() end)
     pcall(function() GuiControl:RestoreHUD() end)
+    pcall(function() GuiControl.SetHUDVisibility(true) end)
     pcall(function() GuiControl:SetHUDVisibility(true) end)
+    pcall(function() GuiControl.Unlock() end)
     pcall(function() GuiControl:Unlock() end)
-    pcall(function() GuiControl:Close("!!! Daily Login") end)
-    pcall(function() GuiControl:Close("!!! Update Log") end)
-    pcall(function() GuiControl:Close("DailyLogin") end)
-    pcall(function() GuiControl:Close("UpdateLog") end)
+
+    local targets = {"!!! Daily Login", "!!! Update Log"}
+    for _, t in ipairs(targets) do
+        pcall(function() GuiControl.Close(t) end)
+        pcall(function() GuiControl:Close(t) end)
+    end
 end
 
--- ============================================================
--- 2. DISABLE BLUR EFFECT
--- ============================================================
 local function disableBlur(obj)
     if obj and (obj.Name == "Blur" or obj:IsA("BlurEffect")) then
         pcall(function()
@@ -49,16 +48,13 @@ for _, child in ipairs(Lighting:GetChildren()) do
 end
 Lighting.ChildAdded:Connect(disableBlur)
 
--- ============================================================
--- 3. ALWAYS HIDE & AUTO-CLOSE POPUPS
--- ============================================================
 local ALWAYS_HIDE = {
     ["!!! Daily Login"] = true,
     ["!!! Update Log"] = true,
     ["Quest"] = true
 }
 
-local processed = {}
+local processed = setmetatable({}, {__mode = "k"})
 
 local function handlePopup(child)
     if not ALWAYS_HIDE[child.Name] or processed[child] then return end
@@ -70,7 +66,7 @@ local function handlePopup(child)
             child:GetPropertyChangedSignal("Enabled"):Connect(function()
                 if child.Enabled then
                     child.Enabled = false
-                    triggerGameRestoreHUD()
+                    restoreHUD()
                 end
             end)
         elseif child:IsA("GuiObject") then
@@ -78,27 +74,23 @@ local function handlePopup(child)
             child:GetPropertyChangedSignal("Visible"):Connect(function()
                 if child.Visible then
                     child.Visible = false
-                    triggerGameRestoreHUD()
+                    restoreHUD()
                 end
             end)
         end
     end)
 
-    -- Jalankan pemulihan HUD resmi
     task.spawn(function()
-        triggerGameRestoreHUD()
+        restoreHUD()
         task.wait(0.2)
-        triggerGameRestoreHUD()
+        restoreHUD()
     end)
 end
 
--- ============================================================
--- 4. INISIALISASI & EVENT LISTENER
--- ============================================================
 for _, child in ipairs(PlayerGui:GetChildren()) do
     handlePopup(child)
 end
 
-triggerGameRestoreHUD()
+restoreHUD()
 
 PlayerGui.ChildAdded:Connect(handlePopup)

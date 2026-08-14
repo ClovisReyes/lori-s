@@ -3,7 +3,6 @@ if not game:IsLoaded() then
 end
 
 local Players = game:GetService("Players")
-local Lighting = game:GetService("Lighting")
 local PlayerGui = (Players.LocalPlayer or Players.PlayerAdded:Wait()):WaitForChild("PlayerGui")
 
 local TARGET_NAMES = {
@@ -11,59 +10,38 @@ local TARGET_NAMES = {
     ["!!! Update Log"] = true
 }
 
-local TARGET_HUD_NAMES = {
-    ["Backpack"] = true,
-    ["Compass"] = true,
-    ["Events"] = true,
-    ["Quest"] = true
+local BUTTON_SIGNALS = {
+    "MouseButton1Click",
+    "Activated",
+    "MouseButton1Down",
+    "MouseButton1Up",
+    "TouchTap"
 }
 
-local function restoreMainHUD()
-    for name in pairs(TARGET_HUD_NAMES) do
-        local sg = PlayerGui:FindFirstChild(name)
-        if sg and sg:IsA("ScreenGui") then
-            pcall(function()
-                sg.Enabled = true
-                for _, child in ipairs(sg:GetChildren()) do
-                    if child:IsA("GuiObject") then
-                        child.Visible = true
-                    end
-                end
-            end)
-        end
-    end
-end
-
-local function fireButtonEvents(btn)
+local function fireButton(btn)
     if not btn then return end
 
     pcall(function()
         if typeof(getconnections) == "function" then
-            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
-                pcall(function() conn:Fire() end)
-            end
-            for _, conn in ipairs(getconnections(btn.Activated)) do
-                pcall(function() conn:Fire() end)
+            for _, sig in ipairs(BUTTON_SIGNALS) do
+                if btn[sig] then
+                    for _, conn in ipairs(getconnections(btn[sig])) do
+                        pcall(function() conn:Fire() end)
+                    end
+                end
             end
         end
     end)
 
     pcall(function()
         if typeof(firesignal) == "function" then
-            pcall(function() firesignal(btn.MouseButton1Click) end)
-            pcall(function() firesignal(btn.Activated) end)
+            for _, sig in ipairs(BUTTON_SIGNALS) do
+                if btn[sig] then
+                    pcall(function() firesignal(btn[sig]) end)
+                end
+            end
         end
     end)
-end
-
-local function disableBlur()
-    local blur = Lighting:FindFirstChild("Blur")
-    if blur and blur:IsA("BlurEffect") then
-        pcall(function()
-            blur.Enabled = false
-            blur.Size = 0
-        end)
-    end
 end
 
 local function processUI(gui)
@@ -75,17 +53,9 @@ local function processUI(gui)
                or gui:FindFirstChild("Close", true)
 
             if btn then
-                fireButtonEvents(btn)
+                fireButton(btn)
             end
-
-            if gui:IsA("ScreenGui") then
-                gui.Enabled = false
-            end
-            gui:Destroy()
         end)
-
-        disableBlur()
-        restoreMainHUD()
     end
 end
 
@@ -96,6 +66,3 @@ end
 PlayerGui.DescendantAdded:Connect(function(desc)
     processUI(desc)
 end)
-
-disableBlur()
-restoreMainHUD()

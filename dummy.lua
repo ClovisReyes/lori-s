@@ -89,10 +89,17 @@ end
 
 local function applyAlwaysVisible(root)
     forceShowItem(root)
-    for _, desc in ipairs(root:GetDescendants()) do
-        forceShowItem(desc)
+    -- Terapkan pada kontainer utama (direct children) agar tombol HUD selalu muncul tanpa mengganggu sub-menu internal
+    for _, child in ipairs(root:GetChildren()) do
+        if child:IsA("GuiObject") then
+            forceShowItem(child)
+        end
     end
-    root.DescendantAdded:Connect(forceShowItem)
+    root.ChildAdded:Connect(function(child)
+        if child:IsA("GuiObject") then
+            forceShowItem(child)
+        end
+    end)
 end
 
 -- MONITORING UTAMA PLAYERGUI

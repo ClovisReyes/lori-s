@@ -25,75 +25,87 @@ for _, child in ipairs(Lighting:GetChildren()) do
 end
 Lighting.ChildAdded:Connect(disableBlur)
 
--- 2. LIST TARGET (ALWAYS HIDE & ALWAYS VISIBLE)
-local ALWAYS_HIDE = {
+-- 2. TARGET LIST (ALWAYS HIDE & ALWAYS VISIBLE)
+local ALWAYS_HIDE_ROOTS = {
     ["!!! Daily Login"] = true,
     ["!!! Update Log"] = true,
     ["Quest"] = true
 }
 
-local ALWAYS_VISIBLE = {
+local ALWAYS_VISIBLE_ROOTS = {
     ["Backpack"] = true,
     ["Events"] = true,
     ["Compass"] = true
 }
 
--- Sembunyikan GUI secara permanen (jika game mencoba memunculkan kembali, paksa mati)
-local function applyHide(gui)
+-- PAKSA SEMBUNYIKAN SECARA DEEP (TERMASUK ELEMENT ANAKNYA)
+local function forceHideItem(item)
     pcall(function()
-        if gui:IsA("ScreenGui") then
-            gui.Enabled = false
-            gui:GetPropertyChangedSignal("Enabled"):Connect(function()
-                if gui.Enabled then
-                    gui.Enabled = false
-                end
+        if item:IsA("ScreenGui") then
+            item.Enabled = false
+            item:GetPropertyChangedSignal("Enabled"):Connect(function()
+                if item.Enabled then item.Enabled = false end
             end)
-        elseif gui:IsA("GuiObject") then
-            gui.Visible = false
-            gui:GetPropertyChangedSignal("Visible"):Connect(function()
-                if gui.Visible then
-                    gui.Visible = false
-                end
+        elseif item:IsA("GuiObject") then
+            item.Visible = false
+            item:GetPropertyChangedSignal("Visible"):Connect(function()
+                if item.Visible then item.Visible = false end
             end)
         end
     end)
 end
 
--- Tampilkan GUI secara permanen (jika game mencoba menyembunyikan, paksa tampilkan)
-local function applyVisible(gui)
+local function applyAlwaysHide(root)
+    forceHideItem(root)
+    for _, desc in ipairs(root:GetDescendants()) do
+        forceHideItem(desc)
+    end
+    root.DescendantAdded:Connect(forceHideItem)
+end
+
+-- PAKSA TAMPILKAN SECARA DEEP (TERMASUK SEMUA FRAME/CHILD INSIDE BACKPACK, EVENTS, COMPASS)
+local function forceShowItem(item)
     pcall(function()
-        if gui:IsA("ScreenGui") then
-            gui.Enabled = true
-            gui:GetPropertyChangedSignal("Enabled"):Connect(function()
-                if not gui.Enabled then
-                    gui.Enabled = true
-                end
+        if item:IsA("ScreenGui") then
+            item.Enabled = true
+            item:GetPropertyChangedSignal("Enabled"):Connect(function()
+                if not item.Enabled then item.Enabled = true end
             end)
-        elseif gui:IsA("GuiObject") then
-            gui.Visible = true
-            gui:GetPropertyChangedSignal("Visible"):Connect(function()
-                if not gui.Visible then
-                    gui.Visible = true
-                end
+        elseif item:IsA("GuiObject") then
+            item.Visible = true
+            item:GetPropertyChangedSignal("Visible"):Connect(function()
+                if not item.Visible then item.Visible = true end
             end)
+
+            if item:IsA("CanvasGroup") then
+                item.GroupTransparency = 0
+                item:GetPropertyChangedSignal("GroupTransparency"):Connect(function()
+                    if item.GroupTransparency > 0 then item.GroupTransparency = 0 end
+                end)
+            end
         end
     end)
 end
 
-local function handleGUI(gui)
-    if ALWAYS_HIDE[gui.Name] then
-        applyHide(gui)
-    elseif ALWAYS_VISIBLE[gui.Name] then
-        applyVisible(gui)
+local function applyAlwaysVisible(root)
+    forceShowItem(root)
+    for _, desc in ipairs(root:GetDescendants()) do
+        forceShowItem(desc)
+    end
+    root.DescendantAdded:Connect(forceShowItem)
+end
+
+-- MONITORING UTAMA PLAYERGUI
+local function checkRoot(child)
+    if ALWAYS_HIDE_ROOTS[child.Name] then
+        applyAlwaysHide(child)
+    elseif ALWAYS_VISIBLE_ROOTS[child.Name] then
+        applyAlwaysVisible(child)
     end
 end
 
--- Tangani semua GUI yang ada di PlayerGui
-for _, desc in ipairs(PlayerGui:GetDescendants()) do
-    handleGUI(desc)
+for _, child in ipairs(PlayerGui:GetChildren()) do
+    checkRoot(child)
 end
 
--- Tangani GUI baru yang muncul atau berubah di PlayerGui
-PlayerGui.DescendantAdded:Connect(function(desc)
-    handleGUI(desc)
-end)
+PlayerGui.ChildAdded:Connect(checkRoot)

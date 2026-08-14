@@ -11,20 +11,24 @@ local TARGET_NAMES = {
     ["!!! Update Log"] = true
 }
 
-local MAIN_HUD_NAMES = {
-    "HUD",
-    "MobileUI",
-    "TopbarStandard",
-    "TopbarCentered",
-    "TouchGui"
+local TARGET_HUD_NAMES = {
+    ["Backpack"] = true,
+    ["Compass"] = true,
+    ["Events"] = true,
+    ["Quest"] = true
 }
 
 local function restoreMainHUD()
-    for _, name in ipairs(MAIN_HUD_NAMES) do
-        local hud = PlayerGui:FindFirstChild(name)
-        if hud and hud:IsA("ScreenGui") then
+    for name in pairs(TARGET_HUD_NAMES) do
+        local sg = PlayerGui:FindFirstChild(name)
+        if sg and sg:IsA("ScreenGui") then
             pcall(function()
-                hud.Enabled = true
+                sg.Enabled = true
+                for _, child in ipairs(sg:GetChildren()) do
+                    if child:IsA("GuiObject") then
+                        child.Visible = true
+                    end
+                end
             end)
         end
     end

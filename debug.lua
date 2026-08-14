@@ -1,108 +1,89 @@
--- DEBUG SCRIPT: Menampilkan properti HUD langsung di layar game
--- Jalankan ini SAAT popup Daily Login / Update Log MASIH TERBUKA (jangan close manual)
-
-local Players = game:GetService("Players")
-local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-
--- Buat GUI debug di layar
-local debugGui = Instance.new("ScreenGui")
-debugGui.Name = "DebugHUD"
-debugGui.ResetOnSpawn = false
-debugGui.DisplayOrder = 999
-debugGui.Parent = PlayerGui
+local PG = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+local dg = Instance.new("ScreenGui")
+dg.Name = "QuickDebug"
+dg.DisplayOrder = 999
+dg.ResetOnSpawn = false
+dg.Parent = PG
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(0.5, 0, 0.8, 0)
-scroll.Position = UDim2.new(0.25, 0, 0.1, 0)
-scroll.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+scroll.Size = UDim2.new(0.55, 0, 0.35, 0)
+scroll.Position = UDim2.new(0.22, 0, 0.05, 0)
+scroll.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 scroll.BackgroundTransparency = 0.1
-scroll.BorderSizePixel = 2
-scroll.BorderColor3 = Color3.fromRGB(255, 255, 0)
-scroll.ScrollBarThickness = 8
-scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scroll.Parent = debugGui
+scroll.ScrollBarThickness = 6
+scroll.Parent = dg
 
-local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0, 2)
-layout.Parent = scroll
+Instance.new("UIListLayout", scroll).Padding = UDim.new(0, 2)
 
-local padding = Instance.new("UIPadding")
-padding.PaddingAll = UDim.new(0, 8)
-padding.Parent = scroll
-
-local function addLine(text, color)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 18)
-    label.BackgroundTransparency = 1
-    label.TextColor3 = color or Color3.fromRGB(255, 255, 255)
-    label.Text = text
-    label.TextSize = 13
-    label.Font = Enum.Font.Code
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.TextWrapped = true
-    label.AutomaticSize = Enum.AutomaticSize.Y
-    label.Parent = scroll
+local function addL(t, c)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(1, -8, 0, 16)
+    l.Position = UDim2.new(0, 4, 0, 0)
+    l.BackgroundTransparency = 1
+    l.TextColor3 = c or Color3.new(1,1,1)
+    l.Text = t
+    l.TextSize = 13
+    l.Font = Enum.Font.Code
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.AutomaticSize = Enum.AutomaticSize.Y
+    l.Parent = scroll
 end
 
-local yellow = Color3.fromRGB(255, 255, 0)
-local green = Color3.fromRGB(100, 255, 100)
-local red = Color3.fromRGB(255, 100, 100)
-local white = Color3.fromRGB(255, 255, 255)
-local cyan = Color3.fromRGB(100, 255, 255)
+local targets = {{"Backpack","Display"},{"Events","Frame"},{"Compass","Inside"}}
 
-addLine("=== DEBUG HUD PROPERTIES ===", yellow)
-addLine("Jalankan SAAT popup masih terbuka", red)
-addLine("", white)
-
-local targets = {"Backpack", "Events", "Compass"}
-
-for _, name in ipairs(targets) do
-    local gui = PlayerGui:FindFirstChild(name)
-    if gui then
-        addLine(">>> " .. name .. " <<<", yellow)
-        addLine("  ClassName: " .. gui.ClassName, green)
-        
-        if gui:IsA("ScreenGui") then
-            addLine("  Enabled: " .. tostring(gui.Enabled), gui.Enabled and green or red)
-        end
-        if gui:IsA("GuiObject") then
-            addLine("  Visible: " .. tostring(gui.Visible), gui.Visible and green or red)
-            addLine("  Position: " .. tostring(gui.Position), white)
-            addLine("  Size: " .. tostring(gui.Size), white)
-        end
-        if gui:IsA("CanvasGroup") then
-            addLine("  GroupTransparency: " .. tostring(gui.GroupTransparency), gui.GroupTransparency > 0 and red or green)
-        end
-        
-        for _, child in ipairs(gui:GetChildren()) do
-            if child:IsA("GuiObject") or child:IsA("CanvasGroup") then
-                addLine("  [Child] " .. child.Name .. " (" .. child.ClassName .. ")", cyan)
-                addLine("    Visible: " .. tostring(child.Visible), child.Visible and green or red)
-                addLine("    Position: " .. tostring(child.Position), white)
-                addLine("    Size: " .. tostring(child.Size), white)
-                if child:IsA("CanvasGroup") then
-                    addLine("    GroupTransparency: " .. tostring(child.GroupTransparency), child.GroupTransparency > 0 and red or green)
-                end
+for _, p in ipairs(targets) do
+    local parent = PG:FindFirstChild(p[1])
+    if parent then
+        local child = parent:FindFirstChild(p[2])
+        if child then
+            addL(p[1].."."..p[2], Color3.fromRGB(255,255,0))
+            addL("  AnchorPoint: "..tostring(child.AnchorPoint))
+            addL("  Position: "..tostring(child.Position))
+            addL("  Size: "..tostring(child.Size))
+            addL("  Visible: "..tostring(child.Visible))
+            if child:IsA("CanvasGroup") then
+                addL("  GroupTrans: "..tostring(child.GroupTransparency), Color3.fromRGB(255,100,100))
             end
+        else
+            addL(p[1].."."..p[2].." NOT FOUND", Color3.fromRGB(255,100,100))
         end
-        addLine("", white)
-    else
-        addLine(">>> " .. name .. " = TIDAK DITEMUKAN <<<", red)
-        addLine("", white)
     end
 end
 
--- Tombol close debug
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 80, 0, 30)
-closeBtn.Position = UDim2.new(0.75, -40, 0.1, -35)
-closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeBtn.Text = "CLOSE"
-closeBtn.TextSize = 14
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.Parent = debugGui
-closeBtn.MouseButton1Click:Connect(function()
-    debugGui:Destroy()
+local testBtn = Instance.new("TextButton")
+testBtn.Size = UDim2.new(0, 220, 0, 40)
+testBtn.Position = UDim2.new(0.5, -110, 0.45, 0)
+testBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+testBtn.TextColor3 = Color3.new(1,1,1)
+testBtn.Text = "TEST: PAKSA TAMPILKAN"
+testBtn.TextSize = 15
+testBtn.Font = Enum.Font.GothamBold
+testBtn.Parent = dg
+testBtn.MouseButton1Click:Connect(function()
+    for _, p in ipairs(targets) do
+        local parent = PG:FindFirstChild(p[1])
+        if parent then
+            local child = parent:FindFirstChild(p[2])
+            if child then
+                pcall(function()
+                    child.Visible = true
+                    child.Position = UDim2.new(0.3, 0, 0.3, 0)
+                end)
+            end
+        end
+    end
+    testBtn.Text = "DONE! CEK LAYAR"
+    testBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
 end)
+
+local cb = Instance.new("TextButton")
+cb.Size = UDim2.new(0, 80, 0, 30)
+cb.Position = UDim2.new(0.78, 0, 0.05, -5)
+cb.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+cb.TextColor3 = Color3.new(1,1,1)
+cb.Text = "CLOSE"
+cb.TextSize = 14
+cb.Font = Enum.Font.GothamBold
+cb.Parent = dg
+cb.MouseButton1Click:Connect(function() dg:Destroy() end)

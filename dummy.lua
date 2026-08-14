@@ -97,12 +97,15 @@ local function applyDeepHide(root)
     root.DescendantAdded:Connect(applyHide)
 end
 
-local function applyDeepVisible(root)
+-- Tampilkan HANYA root dan kontainer tombol langsung (seperti Compass.Frame atau Events.Frame)
+-- tanpa memaksa jendela modal internal (seperti jendela tas/inventory) ikut terbuka.
+local function applyShallowVisible(root)
     applyVisible(root)
-    for _, desc in ipairs(root:GetDescendants()) do
-        applyVisible(desc)
+    for _, child in ipairs(root:GetChildren()) do
+        if child:IsA("GuiObject") and (child.Name == "Frame" or ALWAYS_VISIBLE_NAMES[child.Name]) then
+            applyVisible(child)
+        end
     end
-    root.DescendantAdded:Connect(applyVisible)
 end
 
 local function checkElement(element)
@@ -110,7 +113,7 @@ local function checkElement(element)
     if ALWAYS_HIDE_NAMES[name] then
         applyDeepHide(element)
     elseif ALWAYS_VISIBLE_NAMES[name] then
-        applyDeepVisible(element)
+        applyShallowVisible(element)
     end
 end
 

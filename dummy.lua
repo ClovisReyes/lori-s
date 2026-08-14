@@ -34,10 +34,6 @@ local ALWAYS_HIDE_NAMES = {
 
 local ALWAYS_VISIBLE_NAMES = {
     ["Display"] = true,
-    ["Inventory"] = true,
-    ["Backpack"] = true,
-    ["Rods"] = true,
-    ["Tile"] = true,
     ["Events"] = true,
     ["Compass"] = true
 }

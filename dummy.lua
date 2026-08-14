@@ -19,26 +19,57 @@ local function createMockInput()
     }
 end
 
-local function safeClick(btn)
-    if not btn then return end
+local function getActualButton(obj)
+    if not obj then return nil end
+    if obj:IsA("GuiButton") then
+        return obj
+    end
+    local childBtn = obj:FindFirstChildWhichIsA("GuiButton", true)
+    if childBtn then
+        return childBtn
+    end
+    return obj
+end
 
-    -- Jeda sangat singkat untuk sinkronisasi UI
+local function findCloseButton(gui)
+    local targetBtn = nil
+
+    if gui.Name == "!!! Daily Login" then
+        if gui:FindFirstChild("Main") then
+            targetBtn = gui.Main:FindFirstChild("Close") or gui.Main:FindFirstChild("Exit")
+        end
+    elseif gui.Name == "!!! Update Log" then
+        if gui:FindFirstChild("Main") then
+            local top = gui.Main:FindFirstChild("Top")
+            if top then
+                targetBtn = top:FindFirstChild("Exit") or top:FindFirstChild("Close")
+            else
+                targetBtn = gui.Main:FindFirstChild("Exit") or gui.Main:FindFirstChild("Close")
+            end
+        end
+    end
+
+    if not targetBtn then
+        targetBtn = gui:FindFirstChild("Close", true) or gui:FindFirstChild("Exit", true)
+    end
+
+    return getActualButton(targetBtn)
+end
+
+local function safeClick(btn, gui)
     task.wait(0.1)
 
-    local fired = false
     local mockInput = createMockInput()
-    local signals = {"Activated", "MouseButton1Click", "MouseButton1Up", "InputBegan"}
+    local signals = {"Activated", "MouseButton1Click", "TouchTap", "InputBegan"}
 
-    -- Invisible Click: Mengeksekusi fungsi callback internal tombol dengan parameter InputObject tiruan
-    pcall(function()
-        if typeof(getconnections) == "function" then
-            for _, sig in ipairs(signals) do
-                if btn[sig] then
-                    local conns = getconnections(btn[sig])
-                    if #conns > 0 then
-                        for _, conn in ipairs(conns) do
+    -- 1. Jalankan koneksi event tombol secara aman jika ditemukan
+    if btn then
+        pcall(function()
+            if typeof(getconnections) == "function" then
+                for _, sig in ipairs(signals) do
+                    if btn[sig] then
+                        for _, conn in ipairs(getconnections(btn[sig])) do
                             pcall(function()
-                                -- Panggil callback dengan mengirimkan mockInput agar tidak error nil
                                 if type(conn.Function) == "function" then
                                     conn.Function(mockInput)
                                 elseif type(conn.Fire) == "function" then
@@ -46,15 +77,11 @@ local function safeClick(btn)
                                 end
                             end)
                         end
-                        fired = true
                     end
                 end
             end
-        end
-    end)
+        end)
 
-    -- Fallback Firesignal jika getconnections tidak menemukan fungsi
-    if not fired then
         pcall(function()
             if typeof(firesignal) == "function" then
                 if btn.Activated then
@@ -65,29 +92,25 @@ local function safeClick(btn)
             end
         end)
     end
-end
 
-local function findCloseButton(gui)
-    if gui.Name == "!!! Daily Login" then
-        if gui:FindFirstChild("Main") and gui.Main:FindFirstChild("Close") then
-            return gui.Main.Close
+    -- 2. Memastikan GUI tertutup (toggle Visible/Enabled) tanpa me-destroy UI
+    task.wait(0.2)
+    pcall(function()
+        if gui and gui.Parent then
+            if gui:IsA("ScreenGui") and gui.Enabled then
+                gui.Enabled = false
+            elseif gui:IsA("GuiObject") and gui.Visible then
+                gui.Visible = false
+            end
         end
-    elseif gui.Name == "!!! Update Log" then
-        if gui:FindFirstChild("Main") and gui.Main:FindFirstChild("Top") and gui.Main.Top:FindFirstChild("Exit") then
-            return gui.Main.Top.Exit
-        end
-    end
-
-    return gui:FindFirstChild("Close", true) or gui:FindFirstChild("Exit", true)
+    end)
 end
 
 local function processUI(gui)
     if TARGET_NAMES[gui.Name] then
         task.spawn(function()
             local btn = findCloseButton(gui)
-            if btn then
-                safeClick(btn)
-            end
+            safeClick(btn, gui)
         end)
     end
 end

@@ -26,20 +26,28 @@ end
 Lighting.ChildAdded:Connect(disableBlur)
 
 -- 2. TARGET LIST (ALWAYS HIDE & ALWAYS VISIBLE)
-local ALWAYS_HIDE_ROOTS = {
+local ALWAYS_HIDE_NAMES = {
     ["!!! Daily Login"] = true,
     ["!!! Update Log"] = true,
     ["Quest"] = true
 }
 
-local ALWAYS_VISIBLE_ROOTS = {
+local ALWAYS_VISIBLE_NAMES = {
+    ["Display"] = true,
+    ["Inventory"] = true,
     ["Backpack"] = true,
+    ["Rods"] = true,
+    ["Tile"] = true,
     ["Events"] = true,
     ["Compass"] = true
 }
 
--- PAKSA SEMBUNYIKAN SECARA DEEP (TERMASUK ELEMENT ANAKNYA)
-local function forceHideItem(item)
+local processed = {}
+
+local function applyHide(item)
+    if processed[item] == "hide" then return end
+    processed[item] = "hide"
+
     pcall(function()
         if item:IsA("ScreenGui") then
             item.Enabled = false
@@ -55,16 +63,10 @@ local function forceHideItem(item)
     end)
 end
 
-local function applyAlwaysHide(root)
-    forceHideItem(root)
-    for _, desc in ipairs(root:GetDescendants()) do
-        forceHideItem(desc)
-    end
-    root.DescendantAdded:Connect(forceHideItem)
-end
+local function applyVisible(item)
+    if processed[item] == "visible" then return end
+    processed[item] = "visible"
 
--- PAKSA TAMPILKAN SECARA DEEP (TERMASUK SEMUA FRAME/CHILD INSIDE BACKPACK, EVENTS, COMPASS)
-local function forceShowItem(item)
     pcall(function()
         if item:IsA("ScreenGui") then
             item.Enabled = true
@@ -87,32 +89,34 @@ local function forceShowItem(item)
     end)
 end
 
-local function applyAlwaysVisible(root)
-    forceShowItem(root)
-    -- Terapkan pada kontainer utama (direct children) agar tombol HUD selalu muncul tanpa mengganggu sub-menu internal
-    for _, child in ipairs(root:GetChildren()) do
-        if child:IsA("GuiObject") then
-            forceShowItem(child)
-        end
+local function applyDeepHide(root)
+    applyHide(root)
+    for _, desc in ipairs(root:GetDescendants()) do
+        applyHide(desc)
     end
-    root.ChildAdded:Connect(function(child)
-        if child:IsA("GuiObject") then
-            forceShowItem(child)
-        end
-    end)
+    root.DescendantAdded:Connect(applyHide)
 end
 
--- MONITORING UTAMA PLAYERGUI
-local function checkRoot(child)
-    if ALWAYS_HIDE_ROOTS[child.Name] then
-        applyAlwaysHide(child)
-    elseif ALWAYS_VISIBLE_ROOTS[child.Name] then
-        applyAlwaysVisible(child)
+local function applyDeepVisible(root)
+    applyVisible(root)
+    for _, desc in ipairs(root:GetDescendants()) do
+        applyVisible(desc)
+    end
+    root.DescendantAdded:Connect(applyVisible)
+end
+
+local function checkElement(element)
+    local name = element.Name
+    if ALWAYS_HIDE_NAMES[name] then
+        applyDeepHide(element)
+    elseif ALWAYS_VISIBLE_NAMES[name] then
+        applyDeepVisible(element)
     end
 end
 
-for _, child in ipairs(PlayerGui:GetChildren()) do
-    checkRoot(child)
+-- Scan seluruh descendants di dalam PlayerGui
+for _, desc in ipairs(PlayerGui:GetDescendants()) do
+    checkElement(desc)
 end
 
-PlayerGui.ChildAdded:Connect(checkRoot)
+PlayerGui.DescendantAdded:Connect(checkElement)

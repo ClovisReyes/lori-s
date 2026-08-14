@@ -1,13 +1,13 @@
 local PG = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 local dg = Instance.new("ScreenGui")
-dg.Name = "QuickDebug"
+dg.Name = "FindButtons"
 dg.DisplayOrder = 999
 dg.ResetOnSpawn = false
 dg.Parent = PG
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(0.55, 0, 0.35, 0)
-scroll.Position = UDim2.new(0.22, 0, 0.05, 0)
+scroll.Size = UDim2.new(0.7, 0, 0.7, 0)
+scroll.Position = UDim2.new(0.15, 0, 0.15, 0)
 scroll.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 scroll.BackgroundTransparency = 0.1
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -23,63 +23,48 @@ local function addL(t, c)
     l.BackgroundTransparency = 1
     l.TextColor3 = c or Color3.new(1,1,1)
     l.Text = t
-    l.TextSize = 13
+    l.TextSize = 12
     l.Font = Enum.Font.Code
     l.TextXAlignment = Enum.TextXAlignment.Left
     l.AutomaticSize = Enum.AutomaticSize.Y
     l.Parent = scroll
 end
 
-local targets = {{"Backpack","Display"},{"Events","Frame"},{"Compass","Inside"}}
+local y = Color3.fromRGB(255, 255, 0)
+local c = Color3.fromRGB(100, 255, 255)
+local g = Color3.fromRGB(100, 255, 100)
+local w = Color3.fromRGB(255, 255, 255)
 
-for _, p in ipairs(targets) do
-    local parent = PG:FindFirstChild(p[1])
-    if parent then
-        local child = parent:FindFirstChild(p[2])
-        if child then
-            addL(p[1].."."..p[2], Color3.fromRGB(255,255,0))
-            addL("  AnchorPoint: "..tostring(child.AnchorPoint))
-            addL("  Position: "..tostring(child.Position))
-            addL("  Size: "..tostring(child.Size))
-            addL("  Visible: "..tostring(child.Visible))
-            if child:IsA("CanvasGroup") then
-                addL("  GroupTrans: "..tostring(child.GroupTransparency), Color3.fromRGB(255,100,100))
+for _, popupName in ipairs({"!!! Daily Login", "!!! Update Log"}) do
+    local popup = PG:FindFirstChild(popupName)
+    if popup then
+        addL("=== " .. popupName .. " ===", y)
+        for _, desc in ipairs(popup:GetDescendants()) do
+            if desc:IsA("GuiButton") then
+                local path = desc.Name
+                local p = desc.Parent
+                while p and p ~= popup do
+                    path = p.Name .. "." .. path
+                    p = p.Parent
+                end
+                local conns = 0
+                pcall(function()
+                    conns = #getconnections(desc.Activated) + #getconnections(desc.MouseButton1Click)
+                end)
+                addL("  [BTN] " .. path, c)
+                addL("    Class: " .. desc.ClassName .. " | Conns: " .. conns, g)
+                addL("    Text: " .. tostring(desc:FindFirstChildOfClass("TextLabel") and desc:FindFirstChildOfClass("TextLabel").Text or desc.Text), w)
+                addL("    Size: " .. tostring(desc.Size), w)
             end
-        else
-            addL(p[1].."."..p[2].." NOT FOUND", Color3.fromRGB(255,100,100))
         end
+    else
+        addL("=== " .. popupName .. " NOT FOUND ===", Color3.fromRGB(255,100,100))
     end
 end
 
-local testBtn = Instance.new("TextButton")
-testBtn.Size = UDim2.new(0, 220, 0, 40)
-testBtn.Position = UDim2.new(0.5, -110, 0.45, 0)
-testBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
-testBtn.TextColor3 = Color3.new(1,1,1)
-testBtn.Text = "TEST: PAKSA TAMPILKAN"
-testBtn.TextSize = 15
-testBtn.Font = Enum.Font.GothamBold
-testBtn.Parent = dg
-testBtn.MouseButton1Click:Connect(function()
-    for _, p in ipairs(targets) do
-        local parent = PG:FindFirstChild(p[1])
-        if parent then
-            local child = parent:FindFirstChild(p[2])
-            if child then
-                pcall(function()
-                    child.Visible = true
-                    child.Position = UDim2.new(0.3, 0, 0.3, 0)
-                end)
-            end
-        end
-    end
-    testBtn.Text = "DONE! CEK LAYAR"
-    testBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-end)
-
 local cb = Instance.new("TextButton")
 cb.Size = UDim2.new(0, 80, 0, 30)
-cb.Position = UDim2.new(0.78, 0, 0.05, -5)
+cb.Position = UDim2.new(0.85, -40, 0.15, -35)
 cb.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 cb.TextColor3 = Color3.new(1,1,1)
 cb.Text = "CLOSE"

@@ -25,7 +25,7 @@ for _, child in ipairs(Lighting:GetChildren()) do
 end
 Lighting.ChildAdded:Connect(disableBlur)
 
--- 2. TARGET LIST (ALWAYS HIDE & ALWAYS VISIBLE)
+-- 2. TARGET LIST (EXACT USER SPECIFIED)
 local ALWAYS_HIDE_NAMES = {
     ["!!! Daily Login"] = true,
     ["!!! Update Log"] = true,
@@ -33,7 +33,7 @@ local ALWAYS_HIDE_NAMES = {
 }
 
 local ALWAYS_VISIBLE_NAMES = {
-    ["Display"] = true,
+    ["Backpack"] = true,
     ["Events"] = true,
     ["Compass"] = true
 }
@@ -57,6 +57,14 @@ local function applyHide(item)
             end)
         end
     end)
+end
+
+local function applyDeepHide(root)
+    applyHide(root)
+    for _, desc in ipairs(root:GetDescendants()) do
+        applyHide(desc)
+    end
+    root.DescendantAdded:Connect(applyHide)
 end
 
 local function applyVisible(item)
@@ -85,23 +93,19 @@ local function applyVisible(item)
     end)
 end
 
-local function applyDeepHide(root)
-    applyHide(root)
-    for _, desc in ipairs(root:GetDescendants()) do
-        applyHide(desc)
-    end
-    root.DescendantAdded:Connect(applyHide)
-end
-
--- Tampilkan HANYA root dan kontainer tombol langsung (seperti Compass.Frame atau Events.Frame)
--- tanpa memaksa jendela modal internal (seperti jendela tas/inventory) ikut terbuka.
-local function applyShallowVisible(root)
+local function applyTargetVisible(root)
     applyVisible(root)
+    -- Terapkan ke semua anak langsung (direct children) dari Backpack, Events, dan Compass
     for _, child in ipairs(root:GetChildren()) do
-        if child:IsA("GuiObject") and (child.Name == "Frame" or ALWAYS_VISIBLE_NAMES[child.Name]) then
+        if child:IsA("GuiObject") then
             applyVisible(child)
         end
     end
+    root.ChildAdded:Connect(function(child)
+        if child:IsA("GuiObject") then
+            applyVisible(child)
+        end
+    end)
 end
 
 local function checkElement(element)
@@ -109,13 +113,23 @@ local function checkElement(element)
     if ALWAYS_HIDE_NAMES[name] then
         applyDeepHide(element)
     elseif ALWAYS_VISIBLE_NAMES[name] then
-        applyShallowVisible(element)
+        applyTargetVisible(element)
     end
 end
 
--- Scan seluruh descendants di dalam PlayerGui
+-- Monitor PlayerGui
+for _, child in ipairs(PlayerGui:GetChildren()) do
+    checkElement(child)
+end
 for _, desc in ipairs(PlayerGui:GetDescendants()) do
-    checkElement(desc)
+    if ALWAYS_HIDE_NAMES[desc.Name] or ALWAYS_VISIBLE_NAMES[desc.Name] then
+        checkElement(desc)
+    end
 end
 
-PlayerGui.DescendantAdded:Connect(checkElement)
+PlayerGui.ChildAdded:Connect(checkElement)
+PlayerGui.DescendantAdded:Connect(function(desc)
+    if ALWAYS_HIDE_NAMES[desc.Name] or ALWAYS_VISIBLE_NAMES[desc.Name] then
+        checkElement(desc)
+    end
+end)

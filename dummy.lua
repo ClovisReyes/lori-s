@@ -11,30 +11,32 @@ local TARGET_NAMES = {
     ["!!! Update Log"] = true
 }
 
+local SIGNALS = {
+    "MouseButton1Click",
+    "Activated",
+    "MouseButton1Down",
+    "TouchTap",
+    "InputBegan",
+    "InputEnded"
+}
+
 local function fireButtonEvents(btn)
     if not btn then return end
 
-    pcall(function()
-        if typeof(getconnections) == "function" then
-            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
-                conn:Fire()
+    for _, sigName in ipairs(SIGNALS) do
+        pcall(function()
+            if btn[sigName] then
+                if typeof(getconnections) == "function" then
+                    for _, conn in ipairs(getconnections(btn[sigName])) do
+                        conn:Fire()
+                    end
+                end
+                if typeof(firesignal) == "function" then
+                    firesignal(btn[sigName])
+                end
             end
-            for _, conn in ipairs(getconnections(btn.Activated)) do
-                conn:Fire()
-            end
-            for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do
-                conn:Fire()
-            end
-        end
-    end)
-
-    pcall(function()
-        if typeof(firesignal) == "function" then
-            firesignal(btn.MouseButton1Click)
-            firesignal(btn.Activated)
-            firesignal(btn.MouseButton1Down)
-        end
-    end)
+        end)
+    end
 end
 
 local function disableBlur()
@@ -47,21 +49,32 @@ local function disableBlur()
     end
 end
 
+local function restoreOtherGuis()
+    for _, gui in ipairs(PlayerGui:GetChildren()) do
+        if gui:IsA("ScreenGui") and not TARGET_NAMES[gui.Name] then
+            gui.Enabled = true
+        end
+    end
+end
+
 local function processUI(gui)
     if TARGET_NAMES[gui.Name] then
         pcall(function()
-            local btn = nil
-            if gui.Name == "!!! Update Log" then
-                btn = (gui:FindFirstChild("Main") and gui.Main:FindFirstChild("Top") and gui.Main.Top:FindFirstChild("Exit")) 
-                   or gui:FindFirstChild("Exit", true)
-            elseif gui.Name == "!!! Daily Login" then
-                btn = (gui:FindFirstChild("Main") and gui.Main:FindFirstChild("Close")) 
-                   or gui:FindFirstChild("Close", true)
-            end
+            local btn = (gui:FindFirstChild("Main") and gui.Main:FindFirstChild("Top") and gui.Main.Top:FindFirstChild("Exit")) 
+               or (gui:FindFirstChild("Main") and gui.Main:FindFirstChild("Close"))
+               or gui:FindFirstChild("Exit", true) 
+               or gui:FindFirstChild("Close", true)
 
             if btn then
                 fireButtonEvents(btn)
             end
+
+            if gui:IsA("ScreenGui") then
+                gui.Enabled = false
+            end
+            gui:Destroy()
+            
+            restoreOtherGuis()
         end)
         disableBlur()
     end
@@ -76,3 +89,4 @@ PlayerGui.DescendantAdded:Connect(function(desc)
 end)
 
 disableBlur()
+restoreOtherGuis()

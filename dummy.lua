@@ -11,32 +11,45 @@ local TARGET_NAMES = {
     ["!!! Update Log"] = true
 }
 
-local SIGNALS = {
-    "MouseButton1Click",
-    "Activated",
-    "MouseButton1Down",
-    "TouchTap",
-    "InputBegan",
-    "InputEnded"
+local MAIN_HUD_NAMES = {
+    "HUD",
+    "MobileUI",
+    "TopbarStandard",
+    "TopbarCentered",
+    "TouchGui"
 }
+
+local function restoreMainHUD()
+    for _, name in ipairs(MAIN_HUD_NAMES) do
+        local hud = PlayerGui:FindFirstChild(name)
+        if hud and hud:IsA("ScreenGui") then
+            pcall(function()
+                hud.Enabled = true
+            end)
+        end
+    end
+end
 
 local function fireButtonEvents(btn)
     if not btn then return end
 
-    for _, sigName in ipairs(SIGNALS) do
-        pcall(function()
-            if btn[sigName] then
-                if typeof(getconnections) == "function" then
-                    for _, conn in ipairs(getconnections(btn[sigName])) do
-                        conn:Fire()
-                    end
-                end
-                if typeof(firesignal) == "function" then
-                    firesignal(btn[sigName])
-                end
+    pcall(function()
+        if typeof(getconnections) == "function" then
+            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
+                pcall(function() conn:Fire() end)
             end
-        end)
-    end
+            for _, conn in ipairs(getconnections(btn.Activated)) do
+                pcall(function() conn:Fire() end)
+            end
+        end
+    end)
+
+    pcall(function()
+        if typeof(firesignal) == "function" then
+            pcall(function() firesignal(btn.MouseButton1Click) end)
+            pcall(function() firesignal(btn.Activated) end)
+        end
+    end)
 end
 
 local function disableBlur()
@@ -46,14 +59,6 @@ local function disableBlur()
             blur.Enabled = false
             blur.Size = 0
         end)
-    end
-end
-
-local function restoreOtherGuis()
-    for _, gui in ipairs(PlayerGui:GetChildren()) do
-        if gui:IsA("ScreenGui") and not TARGET_NAMES[gui.Name] then
-            gui.Enabled = true
-        end
     end
 end
 
@@ -73,10 +78,10 @@ local function processUI(gui)
                 gui.Enabled = false
             end
             gui:Destroy()
-            
-            restoreOtherGuis()
         end)
+
         disableBlur()
+        restoreMainHUD()
     end
 end
 
@@ -89,4 +94,4 @@ PlayerGui.DescendantAdded:Connect(function(desc)
 end)
 
 disableBlur()
-restoreOtherGuis()
+restoreMainHUD()

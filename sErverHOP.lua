@@ -1,65 +1,144 @@
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 local Players = game:GetService("Players")
-local localPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local localPlayer = Players.LocalPlayer
+while not localPlayer do
+    task.wait(0.1)
+    localPlayer = Players.LocalPlayer
+end
+
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 
-local CONFIG_FILE = "serverhopper_config_" .. tostring(game.PlaceId) .. ".json"
-local BLACKLIST_FILE = "serverhopper_blacklist_" .. tostring(game.PlaceId) .. ".json"
+local CONFIG_FILENAME = "serverhopper_config_" .. tostring(game.PlaceId) .. ".json"
+local BLACKLIST_FILENAME = "serverhopper_blacklist_" .. tostring(game.PlaceId) .. ".json"
 
-local settings = { autoHop = false, hopInterval = 60, hopMode = "Lowest" }
+local settings = {
+    autoHop = false,
+    hopInterval = 60,
+    hopMode = "Lowest"
+}
+
 local blacklist = {}
 local hopping = false
 local autoHopThread = nil
 
-local function safeCall(fn, ...) local ok, res = pcall(fn, ...) if ok then return res end end
-
-local function saveJSON(filename, data)
-    safeCall(function() writefile(filename, HttpService:JSONEncode(data)) end)
+local function fileExists(filename)
+    if isfile then
+        local success, val = pcall(function() return isfile(filename) end)
+        if success then return val end
+    end
+    local success = pcall(function() readfile(filename) end)
+    return success
 end
 
-local function loadJSON(filename)
-    if isfile and safeCall(isfile, filename) then
-        local raw = safeCall(readfile, filename)
-        if raw then return safeCall(function() return HttpService:JSONDecode(raw) end) end
+local function saveSettings()
+    local success, content = pcall(function()
+        return HttpService:JSONEncode(settings)
+    end)
+    if success and content then
+        pcall(function()
+            writefile(CONFIG_FILENAME, content)
+        end)
     end
 end
 
-local loadedSettings = loadJSON(CONFIG_FILE)
-if type(loadedSettings) == "table" then
-    for k, v in pairs(loadedSettings) do if settings[k] ~= nil then settings[k] = v end end
+local function loadSettings()
+    if fileExists(CONFIG_FILENAME) then
+        local success, content = pcall(function()
+            return readfile(CONFIG_FILENAME)
+        end)
+        if success and content then
+            local successDecode, decoded = pcall(function()
+                return HttpService:JSONDecode(content)
+            end)
+            if successDecode and decoded then
+                for k, v in pairs(decoded) do
+                    if settings[k] ~= nil then
+                        settings[k] = v
+                    end
+                end
+            end
+        end
+    end
 end
 
-local loadedBlacklist = loadJSON(BLACKLIST_FILE)
-if type(loadedBlacklist) == "table" then blacklist = loadedBlacklist end
+local function saveBlacklist()
+    local success, content = pcall(function()
+        return HttpService:JSONEncode(blacklist)
+    end)
+    if success and content then
+        pcall(function()
+            writefile(BLACKLIST_FILENAME, content)
+        end)
+    end
+end
+
+local function loadBlacklist()
+    if fileExists(BLACKLIST_FILENAME) then
+        local success, content = pcall(function()
+            return readfile(BLACKLIST_FILENAME)
+        end)
+        if success and content then
+            local successDecode, decoded = pcall(function()
+                return HttpService:JSONDecode(content)
+            end)
+            if successDecode and decoded then
+                blacklist = decoded
+            end
+        end
+    end
+end
 
 local function addToBlacklist(jobId)
-    if not jobId or jobId == "" or table.find(blacklist, jobId) then return end
+    for _, id in ipairs(blacklist) do
+        if id == jobId then return end
+    end
     table.insert(blacklist, jobId)
-    if #blacklist > 80 then table.remove(blacklist, 1) end
-    saveJSON(BLACKLIST_FILE, blacklist)
-end
-if game.JobId and game.JobId ~= "" then addToBlacklist(game.JobId) end
-
-local function getGuiParent()
-    if gethui then local h = safeCall(gethui) if h then return h end end
-    local cg = safeCall(function() return game:GetService("CoreGui") end)
-    if cg and safeCall(function() local f = Instance.new("Folder", cg) f:Destroy() end) then return cg end
-    return localPlayer:WaitForChild("PlayerGui", 5) or localPlayer:FindFirstChildOfClass("PlayerGui")
+    if #blacklist > 100 then
+        table.remove(blacklist, 1)
+    end
+    saveBlacklist()
 end
 
-local parentGui = getGuiParent()
-if parentGui:FindFirstChild("ServerHopGui") then parentGui.ServerHopGui:Destroy() end
+local function isBlacklisted(jobId)
+    for _, id in ipairs(blacklist) do
+        if id == jobId then return true end
+    end
+    return false
+end
 
-local screenGui = Instance.new("ScreenGui", parentGui)
+loadSettings()
+loadBlacklist()
+addToBlacklist(game.JobId)
+
+local parentGui
+if gethui then
+    local success, hui = pcall(gethui)
+    if success and hui then parentGui = hui end
+end
+if not parentGui then
+    local successCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
+    if successCore and coreGui then
+        parentGui = coreGui
+    else
+        parentGui = localPlayer:WaitForChild("PlayerGui", 5) or localPlayer:FindFirstChildOfClass("PlayerGui")
+    end
+end
+
+if parentGui:FindFirstChild("ServerHopGui") then
+    parentGui.ServerHopGui:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "ServerHopGui"
 screenGui.ResetOnSpawn = false
 screenGui.DisplayOrder = 999
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = parentGui
 
 local connections = {}
 local function addConn(signal, fn)
@@ -159,7 +238,7 @@ for _, m in ipairs(modes) do
     addConn(btn.Activated, function()
         settings.hopMode = m
         updateModeTabs()
-        saveJSON(CONFIG_FILE, settings)
+        saveSettings()
     end)
 end
 updateModeTabs()
@@ -278,27 +357,49 @@ addConn(closeBtn.Activated, function()
     screenGui:Destroy()
 end)
 
+
 local function fetchServers(placeId, sortOrder, cursor)
     local cur = (cursor and cursor ~= "") and ("&cursor=" .. cursor) or ""
+    local sort = sortOrder or "Asc"
     local urls = {
-        "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=" .. (sortOrder or "Asc") .. "&excludeFullGames=true&limit=100" .. cur,
-        "https://games.roproxy.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=" .. (sortOrder or "Asc") .. "&excludeFullGames=true&limit=100" .. cur
+        "https://games.roproxy.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=" .. sort .. "&limit=100" .. cur,
+        "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=" .. sort .. "&limit=100" .. cur
     }
-    local req = (syn and syn.request) or (http and http.request) or http_request or (Fluxus and Fluxus.request) or request
-    for _, u in ipairs(urls) do
-        if req then
-            local r = safeCall(function() return req({ Url = u, Method = "GET" }) end)
-            if r and r.StatusCode == 200 and r.Body then
-                local data = safeCall(function() return HttpService:JSONDecode(r.Body) end)
-                if data and data.data then return data.data, data.nextPageCursor end
+
+    local http = (syn and syn.request) or (http and http.request) or http_request or (Fluxus and Fluxus.request) or request
+
+    for _, url in ipairs(urls) do
+        if http then
+            local success, response = pcall(function()
+                return http({
+                    Url = url,
+                    Method = "GET"
+                })
+            end)
+            if success and response and response.StatusCode == 200 and response.Body then
+                local successDecode, decoded = pcall(function()
+                    return HttpService:JSONDecode(response.Body)
+                end)
+                if successDecode and decoded and decoded.data then
+                    return decoded.data, decoded.nextPageCursor
+                end
             end
         end
-        local r = safeCall(function() return game:HttpGet(u) end)
-        if r then
-            local data = safeCall(function() return HttpService:JSONDecode(r) end)
-            if data and data.data then return data.data, data.nextPageCursor end
+
+        local success, response = pcall(function()
+            return game:HttpGet(url)
+        end)
+        if success and response then
+            local successDecode, decoded = pcall(function()
+                return HttpService:JSONDecode(response)
+            end)
+            if successDecode and decoded and decoded.data then
+                return decoded.data, decoded.nextPageCursor
+            end
         end
     end
+
+    return nil
 end
 
 local function executeServerHop()
@@ -306,81 +407,164 @@ local function executeServerHop()
     hopping = true
     updateStatus("Fetching servers...", "info")
 
+    local placeId = game.PlaceId
+    local currentJobId = game.JobId
+
+    local sortOrder = "Asc"
+    if settings.hopMode == "Highest" then
+        sortOrder = "Desc"
+    elseif settings.hopMode == "Random" then
+        sortOrder = math.random(1, 2) == 1 and "Asc" or "Desc"
+    end
+
     task.spawn(function()
-        local ok, _ = pcall(function()
-            local sort = (settings.hopMode == "Highest" and "Desc") or (settings.hopMode == "Random" and (math.random(1, 2) == 1 and "Asc" or "Desc")) or "Asc"
-            local servers, nextCursor = fetchServers(game.PlaceId, sort)
-            if not servers or #servers == 0 then updateStatus("No servers found", "error") return end
-
-            local valid = {}
-            for _, s in ipairs(servers) do
-                local pl, maxP = tonumber(s.playing) or 0, tonumber(s.maxPlayers) or 0
-                if s.id and s.id ~= game.JobId and pl < maxP then table.insert(valid, s) end
+        local character = localPlayer.Character
+        if not character then
+            local startTime = tick()
+            while not localPlayer.Character and tick() - startTime < 5 do
+                task.wait(0.1)
             end
+            character = localPlayer.Character
+        end
+        if character then
+            pcall(function()
+                character:WaitForChild("HumanoidRootPart", 5)
+            end)
+        end
 
-            if #valid == 0 and nextCursor then
-                local servers2 = fetchServers(game.PlaceId, sort, nextCursor)
-                if servers2 then
-                    for _, s in ipairs(servers2) do
-                        local pl, maxP = tonumber(s.playing) or 0, tonumber(s.maxPlayers) or 0
-                        if s.id and s.id ~= game.JobId and pl < maxP then table.insert(valid, s) end
+        local serverList, nextCursor = fetchServers(placeId, sortOrder)
+        if not serverList or #serverList == 0 then
+            updateStatus("Failed to load servers", "error")
+            task.wait(2)
+            hopping = false
+            return
+        end
+
+        updateStatus("Sorting & filtering...", "info")
+        local validServers = {}
+
+        local function addValid(list)
+            for _, server in ipairs(list or {}) do
+                local pl, maxP = tonumber(server.playing) or 0, tonumber(server.maxPlayers) or 0
+                if server.id ~= currentJobId and pl < maxP and pl >= 1 then
+                    table.insert(validServers, server)
+                end
+            end
+        end
+
+        addValid(serverList)
+
+        if (settings.hopMode == "Highest" or #validServers < 15) and nextCursor then
+            local serverList2 = fetchServers(placeId, sortOrder, nextCursor)
+            if serverList2 then addValid(serverList2) end
+        end
+
+        if #validServers == 0 then
+            updateStatus("No available servers found", "error")
+            task.wait(2)
+            hopping = false
+            return
+        end
+
+        local nonBlacklisted = {}
+        for _, s in ipairs(validServers) do
+            if not isBlacklisted(s.id) then
+                table.insert(nonBlacklisted, s)
+            end
+        end
+
+        if #nonBlacklisted == 0 then
+            blacklist = {}
+            addToBlacklist(currentJobId)
+            saveBlacklist()
+            nonBlacklisted = validServers
+        end
+
+        local targetServer
+        if settings.hopMode == "Random" then
+            targetServer = nonBlacklisted[math.random(1, #nonBlacklisted)]
+        elseif settings.hopMode == "Highest" then
+            table.sort(nonBlacklisted, function(a, b)
+                return (tonumber(a.playing) or 0) > (tonumber(b.playing) or 0)
+            end)
+            targetServer = nonBlacklisted[1]
+        else
+            table.sort(nonBlacklisted, function(a, b)
+                return (tonumber(a.playing) or 0) < (tonumber(b.playing) or 0) end)
+            for _, s in ipairs(nonBlacklisted) do
+                if (tonumber(s.playing) or 0) == 1 then
+                    targetServer = s
+                    break
+                end
+            end
+            if not targetServer then
+                for _, s in ipairs(nonBlacklisted) do
+                    if (tonumber(s.playing) or 0) >= 2 then
+                        targetServer = s
+                        break
                     end
                 end
             end
+            targetServer = targetServer or nonBlacklisted[1]
+        end
 
-            if #valid == 0 then updateStatus("All servers full", "error") return end
+        if targetServer then
+            updateStatus("Teleporting (" .. tostring(targetServer.playing) .. "/" .. tostring(targetServer.maxPlayers) .. ")...", "info")
+            addToBlacklist(targetServer.id)
 
-            local clean = {}
-            for _, s in ipairs(valid) do
-                if not table.find(blacklist, s.id) then table.insert(clean, s) end
+            local teleportSuccess = pcall(function()
+                TeleportService:TeleportToPlaceInstance(placeId, targetServer.id, localPlayer)
+            end)
+
+            if not teleportSuccess then
+                updateStatus("Retrying teleport...", "error")
+                task.wait(1.5)
+                pcall(function()
+                    TeleportService:Teleport(placeId, localPlayer)
+                end)
             end
+        else
+            updateStatus("No valid target found", "error")
+        end
 
-            if #clean == 0 then
-                blacklist = {}
-                if game.JobId and game.JobId ~= "" then addToBlacklist(game.JobId) end
-                clean = valid
-            end
-
-            local target = nil
-            if settings.hopMode == "Random" then
-                target = clean[math.random(1, #clean)]
-            elseif settings.hopMode == "Highest" then
-                table.sort(clean, function(a, b) return (tonumber(a.playing) or 0) > (tonumber(b.playing) or 0) end)
-                target = clean[1]
-            else
-                table.sort(clean, function(a, b) return (tonumber(a.playing) or 0) < (tonumber(b.playing) or 0) end)
-                for _, s in ipairs(clean) do
-                    if (tonumber(s.playing) or 0) >= 2 then target = s break end
-                end
-                target = target or clean[1]
-            end
-
-            if target then
-                updateStatus("Teleporting (" .. (target.playing or "?") .. "/" .. (target.maxPlayers or "?") .. ")...", "info")
-                addToBlacklist(target.id)
-                local tpSuccess = safeCall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, target.id, localPlayer) end)
-                if not tpSuccess then
-                    updateStatus("Retrying teleport...", "error")
-                    task.wait(1.5)
-                    safeCall(function() TeleportService:Teleport(game.PlaceId, localPlayer) end)
-                end
-            else
-                updateStatus("No target found", "error")
-            end
-        end)
-
-        if not ok then updateStatus("Hop error", "error") end
-        task.wait(3.5)
+        task.wait(4)
         hopping = false
     end)
 end
 
-addConn(TeleportService.TeleportInitFailed, function(pl)
-    if pl == localPlayer and screenGui and screenGui.Parent then
-        safeCall(function() GuiService:ClearError() end)
-        updateStatus("Server full! Cari lagi dlm 2s...", "error")
-        task.wait(2)
-        if screenGui.Parent then executeServerHop() end
+local function handleTeleportFailure()
+    pcall(function() GuiService:ClearError() end)
+    hopping = false
+    updateStatus("Server full! Cari lagi dlm 2s...", "error")
+    task.wait(2)
+    if screenGui and screenGui.Parent then
+        executeServerHop()
+    end
+end
+
+addConn(GuiService.ErrorMessageChanged, function(msg)
+    if msg and msg ~= "" then
+        task.spawn(handleTeleportFailure)
+    end
+end)
+
+addConn(TeleportService.TeleportInitFailed, function(player)
+    if player == localPlayer then
+        task.spawn(handleTeleportFailure)
+    end
+end)
+
+pcall(function()
+    local coreGui = game:GetService("CoreGui")
+    local promptGui = coreGui:WaitForChild("RobloxPromptGui", 2)
+    local promptOverlay = promptGui and promptGui:WaitForChild("promptOverlay", 2)
+    if promptOverlay then
+        addConn(promptOverlay.ChildAdded, function(child)
+            if child.Name == "ErrorPrompt" or child.Name:find("Error") or child.Name:find("Prompt") then
+                task.wait(0.2)
+                task.spawn(handleTeleportFailure)
+            end
+        end)
     end
 end)
 
@@ -415,7 +599,7 @@ end
 addConn(autoToggle.Activated, function()
     settings.autoHop = not settings.autoHop
     updateAutoHopVisual()
-    saveJSON(CONFIG_FILE, settings)
+    saveSettings()
     if settings.autoHop then
         startAutoHop()
     elseif autoHopThread then
@@ -429,7 +613,7 @@ addConn(delayBox.FocusLost, function()
     if val and val >= 0 then
         settings.hopInterval = math.floor(val)
         delayBox.Text = tostring(settings.hopInterval)
-        saveJSON(CONFIG_FILE, settings)
+        saveSettings()
         if settings.autoHop then startAutoHop() end
     else
         delayBox.Text = tostring(settings.hopInterval)

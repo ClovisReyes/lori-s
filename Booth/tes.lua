@@ -236,13 +236,8 @@ end
 -- 7. CHECK IF PLAYER ALREADY HAS A BOOTH
 -- ==========================================================================
 local function checkIfAlreadyHaveBooth()
-    local rep = getDataReplion()
-    if rep then
-        local activeListings = rep:Get("SaleListings.Booth")
-        if activeListings ~= nil then
-            MyBoothClaimConfirmed = true
-            return true
-        end
+    if MyBooth and MyBooth.Parent and MyBoothClaimConfirmed then
+        return true
     end
 
     local tradePlaza = workspace:FindFirstChild("Islands") and workspace.Islands:FindFirstChild("TradePlaza")
@@ -251,7 +246,7 @@ local function checkIfAlreadyHaveBooth()
     if boothsFolder then
         for _, booth in ipairs(boothsFolder:GetChildren()) do
             local owner = booth:GetAttribute("Owner") or booth:GetAttribute("OwnerName") or (booth:FindFirstChild("Owner") and booth.Owner.Value)
-            if owner == LocalPlayer.Name or owner == LocalPlayer.UserId then
+            if owner and (tostring(owner) == LocalPlayer.Name or tostring(owner) == tostring(LocalPlayer.UserId)) then
                 MyBooth = booth
                 MyBoothClaimConfirmed = true
                 return true
@@ -318,7 +313,15 @@ local function findAndClaimBooth()
             local prompt = claimAtt and claimAtt:FindFirstChildWhichIsA("ProximityPrompt") or booth:FindFirstChildWhichIsA("ProximityPrompt", true)
             
             if prompt and prompt.Enabled then
-                local bPos = (claimAtt and claimAtt.WorldPosition) or (booth:IsA("Model") and booth:GetPivot().Position) or booth.Position
+                local bPos = nil
+                if claimAtt and claimAtt:IsA("Attachment") then
+                    bPos = claimAtt.WorldPosition
+                elseif prompt.Parent and prompt.Parent:IsA("BasePart") then
+                    bPos = prompt.Parent.Position
+                elseif booth:IsA("Model") then
+                    bPos = booth:GetPivot().Position
+                end
+
                 local dist = (HumanoidRootPart and bPos) and (HumanoidRootPart.Position - bPos).Magnitude or 9999
                 table.insert(candidateBooths, {
                     model = booth,
@@ -339,13 +342,21 @@ local function findAndClaimBooth()
     table.sort(candidateBooths, function(a, b) return a.dist < b.dist end)
     local target = candidateBooths[1]
 
-    notify("Claim Booth", "Teleporting ke booth kosong...")
-    if HumanoidRootPart and target.pos then
-        HumanoidRootPart.CFrame = CFrame.new(target.pos + Vector3.new(0, 3, 2))
-        task.wait(0.5)
+    notify("Claim Booth", string.format("Teleporting ke booth (%d kosong)...", #candidateBooths))
+    
+    -- Teleportasi instan CFrame
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local hrp = char:WaitForChild("HumanoidRootPart", 5) or char:FindFirstChild("HumanoidRootPart")
+    if hrp and target.pos then
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        hrp.CFrame = CFrame.new(target.pos + Vector3.new(0, 3, 0))
+        task.wait(0.3)
+        hrp.CFrame = CFrame.new(target.pos + Vector3.new(0, 3, 0))
+        task.wait(0.3)
     end
 
-    -- Trigger ProximityPrompt
+    -- Trigger ProximityPrompt klaim booth
     if target.prompt and target.prompt.Enabled then
         pcall(function()
             if fireproximityprompt then

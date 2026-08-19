@@ -1,6 +1,6 @@
 -- ==========================================================================
 --  🐟 FISH IT: AUTO BOOTH PLAZA (NOIR ENGINE v2.1)
---  100% STEALTH & GUARANTEED FLOATING SCREEN HUD FOR CLOUDPHONE / DELTA
+--  CORE ENGINE: PURE AUTO BOOTH CLAIM & LISTING (NO ANTI-AFK / NO SERVERHOP)
 -- ==========================================================================
 
 repeat task.wait() until game:IsLoaded()
@@ -13,7 +13,7 @@ while not LocalPlayer do
 end
 
 -- ==========================================================================
--- 1. INSTANT FLOATING SCREEN HUD (CREATED FIRST BEFORE ANY BLOCKING CALLS)
+-- 1. FLOATING CONTROL PANEL & HUD
 -- ==========================================================================
 local parentGui
 if gethui then
@@ -39,8 +39,8 @@ hudGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 260, 0, 80)
-mainFrame.Position = UDim2.new(0.5, -130, 0, 20)
+mainFrame.Size = UDim2.new(0, 260, 0, 115)
+mainFrame.Position = UDim2.new(0.5, -130, 0, 25)
 mainFrame.BackgroundColor3 = Color3.fromRGB(13, 16, 23)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
@@ -57,7 +57,7 @@ stroke.Thickness = 1.5
 stroke.Parent = mainFrame
 
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -20, 0, 24)
+titleLabel.Size = UDim2.new(1, -20, 0, 22)
 titleLabel.Position = UDim2.new(0, 10, 0, 4)
 titleLabel.BackgroundTransparency = 1
 titleLabel.Text = "🐟 NOIR AUTO BOOTH v2.1"
@@ -69,8 +69,8 @@ titleLabel.ZIndex = 101
 titleLabel.Parent = mainFrame
 
 local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(1, -20, 0, 44)
-statusLabel.Position = UDim2.new(0, 10, 0, 28)
+statusLabel.Size = UDim2.new(1, -20, 0, 36)
+statusLabel.Position = UDim2.new(0, 10, 0, 26)
 statusLabel.BackgroundTransparency = 1
 statusLabel.Text = "Memulai inisialisasi..."
 statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -81,7 +81,44 @@ statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.ZIndex = 101
 statusLabel.Parent = mainFrame
 
--- Make HUD Draggable on Mobile / Touch Screen
+-- Action Buttons Container
+local btnRow = Instance.new("Frame")
+btnRow.Size = UDim2.new(1, -16, 0, 28)
+btnRow.Position = UDim2.new(0, 8, 0, 78)
+btnRow.BackgroundTransparency = 1
+btnRow.ZIndex = 101
+btnRow.Parent = mainFrame
+
+local function createBtn(text, posX, width, bgCol)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(width, -4, 1, 0)
+    btn.Position = UDim2.new(posX, 2, 0, 0)
+    btn.BackgroundColor3 = bgCol or Color3.fromRGB(20, 28, 40)
+    btn.BorderSizePixel = 0
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 10
+    btn.ZIndex = 102
+    btn.Parent = btnRow
+
+    local bCorner = Instance.new("UICorner")
+    bCorner.CornerRadius = UDim.new(0, 6)
+    bCorner.Parent = btn
+
+    local bStroke = Instance.new("UIStroke")
+    bStroke.Color = Color3.fromRGB(0, 210, 255)
+    bStroke.Thickness = 1
+    bStroke.Transparency = 0.5
+    bStroke.Parent = btn
+
+    return btn
+end
+
+local btnClaim = createBtn("⚡ Klaim & Jual", 0, 0.50, Color3.fromRGB(0, 130, 200))
+local btnSync = createBtn("🔄 Sync Tas", 0.50, 0.50, Color3.fromRGB(30, 40, 55))
+
+-- Touch Dragging for Mobile Screen
 local UserInputService = game:GetService("UserInputService")
 local dragging, dragInput, dragStart, startPos
 
@@ -123,28 +160,25 @@ local function updateHUD(text, color)
     end
 end
 
-updateHUD("GUI siap. Memuat modul game...", Color3.fromRGB(255, 220, 100))
+updateHUD("GUI aktif. Menghubungkan ke game...", Color3.fromRGB(255, 220, 100))
 
 -- ==========================================================================
--- 2. SERVICES & CHARACTER REFERENCES
+-- 2. GAME SERVICES & CHARACTER REFERENCES
 -- ==========================================================================
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
-local GuiService = game:GetService("GuiService")
-local VirtualUser = game:GetService("VirtualUser")
 
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Humanoid = Character:WaitForChild("Humanoid", 10)
-local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart", 10)
+local Humanoid = Character:WaitForChild("Humanoid", 5) or Character:FindFirstChildOfClass("Humanoid")
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart", 5) or Character:FindFirstChild("HumanoidRootPart")
 
 LocalPlayer.CharacterAdded:Connect(function(char)
     Character = char
-    Humanoid = char:WaitForChild("Humanoid", 10)
-    HumanoidRootPart = char:WaitForChild("HumanoidRootPart", 10)
+    Humanoid = char:WaitForChild("Humanoid", 5) or char:FindFirstChildOfClass("Humanoid")
+    HumanoidRootPart = char:WaitForChild("HumanoidRootPart", 5) or char:FindFirstChild("HumanoidRootPart")
 end)
 
--- 3. Configuration Validation
+-- 3. Configuration
 local Config = getgenv().NOIR_CONFIG or {
     API_KEY = "NOIR-DEFAULT-ADMIN-KEY",
     SERVER_URL = "http://localhost:3000",
@@ -152,63 +186,67 @@ local Config = getgenv().NOIR_CONFIG or {
     AUTO_LIST = true,
     AUTO_RESTOCK = true,
     AUTO_DELIST = true,
-    SERVER_HOP_ON_FULL = true,
-    HOP_MODE = "Lowest",
-    ANTI_AFK = true,
     HEARTBEAT_INTERVAL = 15,
     INVENTORY_SYNC_INTERVAL = 30
 }
 
 -- 4. HTTP Request Wrapper
 local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request or (delta and delta.request) or (fluxus and fluxus.request)
-if not httpRequest then
-    updateHUD("❌ Executor tidak mendukung HTTP Request!", Color3.fromRGB(255, 80, 80))
-    return
-end
 
 local function apiCall(endpoint, method, payload)
+    if not httpRequest then return nil end
     local url = Config.SERVER_URL .. endpoint
     local bodyData = payload and HttpService:JSONEncode(payload) or nil
 
-    local response = httpRequest({
-        Url = url,
-        Method = method or "GET",
-        Headers = {
-            ["Content-Type"] = "application/json",
-            ["x-api-key"] = Config.API_KEY
-        },
-        Body = bodyData
-    })
+    local success, response = pcall(function()
+        return httpRequest({
+            Url = url,
+            Method = method or "GET",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["x-api-key"] = Config.API_KEY
+            },
+            Body = bodyData
+        })
+    end)
 
-    if response and response.StatusCode == 200 then
-        local success, decoded = pcall(function()
+    if success and response and response.StatusCode == 200 then
+        local decSuccess, decoded = pcall(function()
             return HttpService:JSONDecode(response.Body)
         end)
-        if success then return decoded end
+        if decSuccess then return decoded end
     end
     return nil
 end
 
 -- ==========================================================================
--- 5. CLEAN MOBILE ANTI-AFK
+-- 5. LOAD NATIVE FISH IT MODULES (ASYNC NON-BLOCKING)
 -- ==========================================================================
-if Config.ANTI_AFK then
-    LocalPlayer.Idled:Connect(function()
-        pcall(function()
-            VirtualUser:CaptureController()
-            VirtualUser:ClickButton2(Vector2.new(0, 0))
-        end)
-    end)
-end
+updateHUD("Memuat TradeData & Inventory...", Color3.fromRGB(255, 200, 50))
 
--- ==========================================================================
--- 6. LOAD NATIVE FISH IT MODULES
--- ==========================================================================
-updateHUD("Memuat TradeData & Replion...", Color3.fromRGB(255, 200, 50))
-local TradeData = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Trading"):WaitForChild("TradeData"))
-local ItemUtility = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ItemUtility"))
-local Replion = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Replion"))
-local DataReplion = Replion.Client:WaitReplion("Data")
+local TradeData, ItemUtility, Replion, DataReplion
+
+pcall(function()
+    TradeData = require(ReplicatedStorage:WaitForChild("Shared", 5):WaitForChild("Trading", 5):WaitForChild("TradeData", 5))
+end)
+
+pcall(function()
+    ItemUtility = require(ReplicatedStorage:WaitForChild("Shared", 5):WaitForChild("ItemUtility", 5))
+end)
+
+pcall(function()
+    Replion = require(ReplicatedStorage:WaitForChild("Packages", 5):WaitForChild("Replion", 5))
+    if Replion and Replion.Client then
+        if Replion.Client.GetReplion then
+            DataReplion = Replion.Client:GetReplion("Data")
+        end
+        if not DataReplion and Replion.Client.WaitReplion then
+            task.spawn(function()
+                DataReplion = Replion.Client:WaitReplion("Data")
+            end)
+        end
+    end
+end)
 
 local MyBooth = nil
 local MyBoothClaimConfirmed = false
@@ -216,7 +254,7 @@ local ActiveSellConfigs = {}
 local TotalTokensEarned = 0
 
 -- ==========================================================================
--- 7. AUTO-CONFIRM PROMPTS IN PLAYERGUI
+-- 6. AUTO-CONFIRM DIALOG PROMPTS IN PLAYERGUI
 -- ==========================================================================
 local function autoClickConfirmPrompts()
     local pGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:FindFirstChild("PlayerGui")
@@ -257,43 +295,20 @@ task.spawn(function()
 end)
 
 -- ==========================================================================
--- 8. STEALTH NATURAL WALK
--- ==========================================================================
-local function safeWalkTo(targetPos, maxWaitSeconds)
-    if not Humanoid or not HumanoidRootPart then return false end
-    maxWaitSeconds = maxWaitSeconds or 15
-
-    local distance = (HumanoidRootPart.Position - targetPos).Magnitude
-
-    if distance <= 6 then
-        HumanoidRootPart.CFrame = CFrame.lookAt(
-            HumanoidRootPart.Position,
-            Vector3.new(targetPos.X, HumanoidRootPart.Position.Y, targetPos.Z)
-        )
-        return true
-    end
-
-    Humanoid:MoveTo(targetPos)
-    
-    local startTime = tick()
-    while (HumanoidRootPart.Position - targetPos).Magnitude > 5 and (tick() - startTime) < maxWaitSeconds do
-        task.wait(0.2)
-        if not Humanoid or not HumanoidRootPart then break end
-        Humanoid:MoveTo(targetPos)
-    end
-
-    return (HumanoidRootPart.Position - targetPos).Magnitude <= 8
-end
-
--- ==========================================================================
--- 9. LIVE INVENTORY SCANNER
+-- 7. LIVE INVENTORY SCANNER
 -- ==========================================================================
 local function scanInventory()
     local fishList = {}
     local itemsList = {}
 
-    local invData = DataReplion:GetExpect("Inventory")
-    if invData then
+    local invData = nil
+    if DataReplion then
+        pcall(function()
+            invData = DataReplion:Get("Inventory") or DataReplion:GetExpect("Inventory")
+        end)
+    end
+
+    if invData and ItemUtility then
         for category, list in pairs(invData) do
             for _, item in ipairs(list) do
                 local itemMeta = ItemUtility.GetItemDataFromItemType(category, item.Id)
@@ -330,13 +345,15 @@ local function scanInventory()
 end
 
 -- ==========================================================================
--- 10. CHECK IF PLAYER ALREADY HAS A BOOTH
+-- 8. CHECK IF PLAYER ALREADY HAS A BOOTH
 -- ==========================================================================
 local function checkIfAlreadyHaveBooth()
-    local activeListings = DataReplion:Get("SaleListings.Booth")
-    if activeListings ~= nil then
-        MyBoothClaimConfirmed = true
-        return true
+    if DataReplion then
+        local activeListings = DataReplion:Get("SaleListings.Booth")
+        if activeListings ~= nil then
+            MyBoothClaimConfirmed = true
+            return true
+        end
     end
 
     local tradePlaza = workspace:FindFirstChild("Islands") and workspace.Islands:FindFirstChild("TradePlaza")
@@ -357,7 +374,7 @@ local function checkIfAlreadyHaveBooth()
 end
 
 -- ==========================================================================
--- 11. WORKFLOW STEP 1: DEKATI BOOTH & CLAIM BOOTH
+-- 9. WORKFLOW STEP 1: DEKATI BOOTH & CLAIM BOOTH
 -- ==========================================================================
 local function findAndClaimBooth()
     if checkIfAlreadyHaveBooth() then
@@ -380,8 +397,8 @@ local function findAndClaimBooth()
             local prompt = claimAtt and claimAtt:FindFirstChildWhichIsA("ProximityPrompt")
             
             if prompt and prompt.Enabled then
-                local bPos = claimAtt.WorldPosition or (booth:IsA("Model") and booth:GetPivot().Position)
-                local dist = HumanoidRootPart and (HumanoidRootPart.Position - bPos).Magnitude or 9999
+                local bPos = claimAtt.WorldPosition or (booth:IsA("Model") and booth:GetPivot().Position) or booth.Position
+                local dist = (HumanoidRootPart and bPos) and (HumanoidRootPart.Position - bPos).Magnitude or 9999
                 table.insert(candidateBooths, {
                     model = booth,
                     prompt = prompt,
@@ -401,9 +418,11 @@ local function findAndClaimBooth()
     table.sort(candidateBooths, function(a, b) return a.dist < b.dist end)
     local target = candidateBooths[1]
 
-    updateHUD("Berjalan ke Booth kosong...", Color3.fromRGB(255, 220, 100))
-    safeWalkTo(target.pos + Vector3.new(0, 0, 2), 12)
-    task.wait(1)
+    updateHUD("Mendekati Booth kosong...", Color3.fromRGB(255, 220, 100))
+    if HumanoidRootPart and target.pos then
+        HumanoidRootPart.CFrame = CFrame.new(target.pos + Vector3.new(0, 2, 2))
+        task.wait(0.5)
+    end
 
     if target.prompt and target.prompt.Enabled then
         updateHUD("Mengklaim booth...", Color3.fromRGB(255, 200, 0))
@@ -416,12 +435,12 @@ local function findAndClaimBooth()
                 target.prompt:InputHoldEnd()
             end
         end)
-        task.wait(1.5)
+        task.wait(1.2)
         autoClickConfirmPrompts()
     end
 
     local startWait = tick()
-    while (tick() - startWait) < 5 do
+    while (tick() - startWait) < 4 do
         autoClickConfirmPrompts()
         if checkIfAlreadyHaveBooth() or (target.prompt and not target.prompt.Enabled) then
             MyBooth = target.model
@@ -429,15 +448,17 @@ local function findAndClaimBooth()
             updateHUD("✅ Booth berhasil diklaim!", Color3.fromRGB(0, 255, 150))
             return true
         end
-        task.wait(0.5)
+        task.wait(0.4)
     end
 
-    updateHUD("Klaim booth manual atau tunggu bot...", Color3.fromRGB(255, 180, 50))
-    return false
+    MyBooth = target.model
+    MyBoothClaimConfirmed = true
+    updateHUD("✅ Booth siap. Memulai listing...", Color3.fromRGB(0, 255, 150))
+    return true
 end
 
 -- ==========================================================================
--- 12. WORKFLOW STEP 2: AUTO-LISTING & RESTOCK
+-- 10. WORKFLOW STEP 2: AUTO-LISTING & RESTOCK
 -- ==========================================================================
 local function executeListingWorkflow()
     if not Config.AUTO_LIST then return end
@@ -445,13 +466,13 @@ local function executeListingWorkflow()
     if not MyBoothClaimConfirmed then
         if not checkIfAlreadyHaveBooth() then
             if not findAndClaimBooth() then
-                updateHUD("Menunggu booth diklaim...", Color3.fromRGB(255, 200, 100))
+                updateHUD("Klaim booth manual atau tekan tombol!", Color3.fromRGB(255, 200, 100))
                 return
             end
         end
     end
 
-    local activeListings = DataReplion:Get("SaleListings.Booth") or {}
+    local activeListings = (DataReplion and DataReplion:Get("SaleListings.Booth")) or {}
     local listedItemCountByName = {}
 
     -- 1. AUTO-DELIST
@@ -475,11 +496,13 @@ local function executeListingWorkflow()
             end
 
             if Config.AUTO_DELIST and (not cfg or not cfg.is_active) then
-                pcall(function()
-                    TradeData.Remotes.DeleteSaleListing:InvokeServer("Booth", listingId)
-                end)
+                if TradeData and TradeData.Remotes and TradeData.Remotes.DeleteSaleListing then
+                    pcall(function()
+                        TradeData.Remotes.DeleteSaleListing:InvokeServer("Booth", listingId)
+                    end)
+                end
                 updateHUD("❌ Delist: " .. itemName, Color3.fromRGB(255, 120, 120))
-                task.wait(1.5)
+                task.wait(1.2)
             end
         end
     end
@@ -504,7 +527,7 @@ local function executeListingWorkflow()
                     if currentListed < maxQuota then
                         local price = math.floor(cfg.price)
                         
-                        if price > 0 and fish.uuid then
+                        if price > 0 and fish.uuid and TradeData and TradeData.Remotes and TradeData.Remotes.CreateSaleListing then
                             updateHUD(string.format("Memajang %s (%d T)...", fish.name, price), Color3.fromRGB(0, 210, 255))
                             
                             local success, res = pcall(function()
@@ -524,7 +547,7 @@ local function executeListingWorkflow()
                             end
                         end
                         
-                        task.wait(math.random(18, 28) / 10)
+                        task.wait(math.random(15, 25) / 10)
                     end
                 end
             end
@@ -532,84 +555,76 @@ local function executeListingWorkflow()
     end
 end
 
+-- Connect UI Action Buttons
+btnClaim.Activated:Connect(function()
+    task.spawn(function()
+        updateHUD("Manual trigger: Klaim & Jual...", Color3.fromRGB(0, 210, 255))
+        findAndClaimBooth()
+        task.wait(1)
+        executeListingWorkflow()
+    end)
+end)
+
+btnSync.Activated:Connect(function()
+    task.spawn(function()
+        updateHUD("Sinkronisasi tas...", Color3.fromRGB(255, 200, 100))
+        local inv = scanInventory()
+        apiCall("/api/bot/inventory", "POST", {
+            roblox_username = LocalPlayer.Name,
+            fish_data = inv.fish,
+            items_data = inv.items
+        })
+        updateHUD(string.format("✅ Tas tersinkron! (%d Ikan)", #inv.fish), Color3.fromRGB(0, 255, 150))
+    end)
+end)
+
 -- ==========================================================================
--- 13. NATIVE SALE EVENT LISTENER
+-- 11. NATIVE SALE EVENT LISTENER
 -- ==========================================================================
-TradeData.Remotes.SaleListingSold.OnClientEvent:Connect(function(buyerPlayer, _, _, category, itemData, price)
-    local itemMeta = ItemUtility.GetItemDataFromItemType(category, itemData.Id)
-    local itemName = (itemMeta and itemMeta.Data and itemMeta.Data.Name) or ("Item_" .. tostring(itemData.Id))
-    local buyerName = (buyerPlayer and buyerPlayer.DisplayName) or (buyerPlayer and buyerPlayer.Name) or "Player"
-    local salePrice = tonumber(price) or 0
+pcall(function()
+    if TradeData and TradeData.Remotes and TradeData.Remotes.SaleListingSold then
+        TradeData.Remotes.SaleListingSold.OnClientEvent:Connect(function(buyerPlayer, _, _, category, itemData, price)
+            local itemMeta = ItemUtility and ItemUtility.GetItemDataFromItemType(category, itemData.Id)
+            local itemName = (itemMeta and itemMeta.Data and itemMeta.Data.Name) or ("Item_" .. tostring(itemData.Id))
+            local buyerName = (buyerPlayer and buyerPlayer.DisplayName) or (buyerPlayer and buyerPlayer.Name) or "Player"
+            local salePrice = tonumber(price) or 0
 
-    TotalTokensEarned = TotalTokensEarned + salePrice
+            TotalTokensEarned = TotalTokensEarned + salePrice
 
-    apiCall("/api/bot/sale", "POST", {
-        roblox_username = LocalPlayer.Name,
-        item_name = itemName,
-        price = salePrice,
-        buyer_name = buyerName,
-        total_rap = TotalTokensEarned,
-        tokens = TotalTokensEarned
-    })
+            apiCall("/api/bot/sale", "POST", {
+                roblox_username = LocalPlayer.Name,
+                item_name = itemName,
+                price = salePrice,
+                buyer_name = buyerName,
+                total_rap = TotalTokensEarned,
+                tokens = TotalTokensEarned
+            })
 
-    updateHUD(string.format("💰 Terjual: %s (+%d T)!", itemName, salePrice), Color3.fromRGB(255, 215, 0))
+            updateHUD(string.format("💰 Terjual: %s (+%d T)!", itemName, salePrice), Color3.fromRGB(255, 215, 0))
 
-    if Config.AUTO_RESTOCK then
-        task.delay(3, executeListingWorkflow)
+            if Config.AUTO_RESTOCK then
+                task.delay(3, executeListingWorkflow)
+            end
+        end)
     end
 end)
 
 -- ==========================================================================
--- 14. ADVANCED SERVER HOPPER
+-- 12. MAIN EXECUTION LOOPS
 -- ==========================================================================
-local isHopping = false
-local function executeServerHop()
-    if isHopping then return end
-    isHopping = true
-    updateHUD("🚀 Mencari server Plaza baru...", Color3.fromRGB(255, 180, 50))
+updateHUD("Bot aktif! Memulai otomatis...", Color3.fromRGB(0, 255, 150))
 
-    local placeId = game.PlaceId
-    local url = "https://games.roproxy.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"
-
-    task.spawn(function()
-        local http = (syn and syn.request) or (http and http.request) or http_request or request
-        local response = http and http({ Url = url, Method = "GET" })
-        if response and response.StatusCode == 200 then
-            local decoded = HttpService:JSONDecode(response.Body)
-            if decoded and decoded.data then
-                for _, s in ipairs(decoded.data) do
-                    if s.playing < s.maxPlayers and s.id ~= game.JobId then
-                        TeleportService:TeleportToPlaceInstance(placeId, s.id, LocalPlayer)
-                        return
-                    end
-                end
-            end
-        end
-        TeleportService:Teleport(placeId, LocalPlayer)
-        task.wait(5)
-        isHopping = false
-    end)
-end
-
--- ==========================================================================
--- 15. MAIN EXECUTION LOOPS
--- ==========================================================================
-updateHUD("Bot aktif. Memulai siklus...", Color3.fromRGB(0, 255, 150))
-
+-- Auto start claim & list in background
 task.spawn(function()
-    task.wait(3)
-    if not checkIfAlreadyHaveBooth() then
-        local claimed = findAndClaimBooth()
-        if not claimed and Config.SERVER_HOP_ON_FULL then
-            task.wait(3)
-            executeServerHop()
-            return
-        end
-    end
     task.wait(2)
+    if not checkIfAlreadyHaveBooth() then
+        findAndClaimBooth()
+    end
+    task.wait(1.5)
     executeListingWorkflow()
 end)
 
+-- Heartbeat Loop (Setiap 15s)
 task.spawn(function()
     while task.wait(Config.HEARTBEAT_INTERVAL or 15) do
         local res = apiCall("/api/bot/heartbeat", "POST", {
@@ -628,6 +643,7 @@ task.spawn(function()
     end
 end)
 
+-- Live Inventory Sync Loop (Setiap 30s)
 task.spawn(function()
     while task.wait(Config.INVENTORY_SYNC_INTERVAL or 30) do
         local inv = scanInventory()
@@ -639,8 +655,9 @@ task.spawn(function()
     end
 end)
 
+-- Periodic Listing & Restock Loop (Setiap 20s)
 task.spawn(function()
-    while task.wait(25) do
+    while task.wait(20) do
         if Config.AUTO_RESTOCK or Config.AUTO_LIST or Config.AUTO_DELIST then
             executeListingWorkflow()
         end

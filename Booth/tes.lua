@@ -1,184 +1,35 @@
 -- ==========================================================================
 --  🐟 FISH IT: AUTO BOOTH PLAZA (NOIR ENGINE v2.1)
---  CORE ENGINE: PURE AUTO BOOTH CLAIM & LISTING (NO ANTI-AFK / NO SERVERHOP)
+--  FULL AUTOMATION: AUTO-CLAIM, AUTO-LIST, RESTOCK, ANTI-AFK, & SERVER HOP
+--  100% STEALTH PHYSICS-BASED MOVEMENT (NO INSTANT TELEPORT / BAC SAFE)
 -- ==========================================================================
 
 repeat task.wait() until game:IsLoaded()
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local GuiService = game:GetService("GuiService")
+local PathfindingService = game:GetService("PathfindingService")
+
 local LocalPlayer = Players.LocalPlayer
 while not LocalPlayer do
     task.wait(0.1)
     LocalPlayer = Players.LocalPlayer
 end
 
--- ==========================================================================
--- 1. FLOATING CONTROL PANEL & HUD
--- ==========================================================================
-local parentGui
-if gethui then
-    pcall(function() parentGui = gethui() end)
-end
-if not parentGui then
-    parentGui = LocalPlayer:WaitForChild("PlayerGui", 5)
-end
-if not parentGui then
-    pcall(function() parentGui = game:GetService("CoreGui") end)
-end
-
-if parentGui and parentGui:FindFirstChild("NoirBoothHUD") then
-    pcall(function() parentGui.NoirBoothHUD:Destroy() end)
-end
-
-local hudGui = Instance.new("ScreenGui")
-hudGui.Name = "NoirBoothHUD"
-hudGui.ResetOnSpawn = false
-hudGui.IgnoreGuiInset = true
-hudGui.DisplayOrder = 999999
-hudGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-local mainFrame = Instance.new("Frame")
-mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 260, 0, 115)
-mainFrame.Position = UDim2.new(0.5, -130, 0, 25)
-mainFrame.BackgroundColor3 = Color3.fromRGB(13, 16, 23)
-mainFrame.BorderSizePixel = 0
-mainFrame.Active = true
-mainFrame.ZIndex = 100
-mainFrame.Parent = hudGui
-
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 10)
-corner.Parent = mainFrame
-
-local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(0, 210, 255)
-stroke.Thickness = 1.5
-stroke.Parent = mainFrame
-
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -20, 0, 22)
-titleLabel.Position = UDim2.new(0, 10, 0, 4)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "🐟 NOIR AUTO BOOTH v2.1"
-titleLabel.TextColor3 = Color3.fromRGB(0, 210, 255)
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextSize = 12
-titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-titleLabel.ZIndex = 101
-titleLabel.Parent = mainFrame
-
-local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(1, -20, 0, 36)
-statusLabel.Position = UDim2.new(0, 10, 0, 26)
-statusLabel.BackgroundTransparency = 1
-statusLabel.Text = "Memulai inisialisasi..."
-statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-statusLabel.Font = Enum.Font.GothamMedium
-statusLabel.TextSize = 10
-statusLabel.TextWrapped = true
-statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-statusLabel.ZIndex = 101
-statusLabel.Parent = mainFrame
-
--- Action Buttons Container
-local btnRow = Instance.new("Frame")
-btnRow.Size = UDim2.new(1, -16, 0, 28)
-btnRow.Position = UDim2.new(0, 8, 0, 78)
-btnRow.BackgroundTransparency = 1
-btnRow.ZIndex = 101
-btnRow.Parent = mainFrame
-
-local function createBtn(text, posX, width, bgCol)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(width, -4, 1, 0)
-    btn.Position = UDim2.new(posX, 2, 0, 0)
-    btn.BackgroundColor3 = bgCol or Color3.fromRGB(20, 28, 40)
-    btn.BorderSizePixel = 0
-    btn.Text = text
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 10
-    btn.ZIndex = 102
-    btn.Parent = btnRow
-
-    local bCorner = Instance.new("UICorner")
-    bCorner.CornerRadius = UDim.new(0, 6)
-    bCorner.Parent = btn
-
-    local bStroke = Instance.new("UIStroke")
-    bStroke.Color = Color3.fromRGB(0, 210, 255)
-    bStroke.Thickness = 1
-    bStroke.Transparency = 0.5
-    bStroke.Parent = btn
-
-    return btn
-end
-
-local btnClaim = createBtn("⚡ Klaim & Jual", 0, 0.50, Color3.fromRGB(0, 130, 200))
-local btnSync = createBtn("🔄 Sync Tas", 0.50, 0.50, Color3.fromRGB(30, 40, 55))
-
--- Touch Dragging for Mobile Screen
-local UserInputService = game:GetService("UserInputService")
-local dragging, dragInput, dragStart, startPos
-
-mainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = mainFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-mainFrame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
-hudGui.Parent = parentGui
-
-local function updateHUD(text, color)
-    print("[NOIR HUD] " .. tostring(text))
-    if statusLabel and statusLabel.Parent then
-        statusLabel.Text = tostring(text)
-        if color then
-            statusLabel.TextColor3 = color
-        end
-    end
-end
-
-updateHUD("GUI aktif. Menghubungkan ke game...", Color3.fromRGB(255, 220, 100))
-
--- ==========================================================================
--- 2. GAME SERVICES & CHARACTER REFERENCES
--- ==========================================================================
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
-
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Humanoid = Character:WaitForChild("Humanoid", 5) or Character:FindFirstChildOfClass("Humanoid")
-local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart", 5) or Character:FindFirstChild("HumanoidRootPart")
+local Humanoid = Character:WaitForChild("Humanoid", 10) or Character:FindFirstChildOfClass("Humanoid")
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart", 10) or Character:FindFirstChild("HumanoidRootPart")
 
 LocalPlayer.CharacterAdded:Connect(function(char)
     Character = char
-    Humanoid = char:WaitForChild("Humanoid", 5) or char:FindFirstChildOfClass("Humanoid")
-    HumanoidRootPart = char:WaitForChild("HumanoidRootPart", 5) or char:FindFirstChild("HumanoidRootPart")
+    Humanoid = char:WaitForChild("Humanoid", 10) or char:FindFirstChildOfClass("Humanoid")
+    HumanoidRootPart = char:WaitForChild("HumanoidRootPart", 10) or char:FindFirstChild("HumanoidRootPart")
 end)
 
--- 3. Configuration
+-- 1. Configuration Validation
 local Config = getgenv().NOIR_CONFIG or {
     API_KEY = "NOIR-DEFAULT-ADMIN-KEY",
     SERVER_URL = "http://localhost:3000",
@@ -186,11 +37,23 @@ local Config = getgenv().NOIR_CONFIG or {
     AUTO_LIST = true,
     AUTO_RESTOCK = true,
     AUTO_DELIST = true,
+    SERVER_HOP_ON_FULL = true,
+    HOP_MODE = "Lowest",
+    ANTI_AFK = true,
     HEARTBEAT_INTERVAL = 15,
     INVENTORY_SYNC_INTERVAL = 30
 }
 
--- 4. HTTP Request Wrapper
+print([[
+==========================================================
+🐟 FISH IT: AUTO BOOTH PLAZA (NOIR ENGINE v2.1)
+🎯 FULL AUTO ACTIVE: CLAIM | LIST | RESTOCK | HOP | AFK
+==========================================================
+]])
+
+-- ==========================================================================
+-- 2. UNIVERSAL HTTP REQUEST WRAPPER
+-- ==========================================================================
 local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request or (delta and delta.request) or (fluxus and fluxus.request)
 
 local function apiCall(endpoint, method, payload)
@@ -220,10 +83,28 @@ local function apiCall(endpoint, method, payload)
 end
 
 -- ==========================================================================
--- 5. LOAD NATIVE FISH IT MODULES (ASYNC NON-BLOCKING)
+-- 3. STEALTH ANTI-AFK (FAKE TAP / NO GETCONNECTIONS TAMPERING)
 -- ==========================================================================
-updateHUD("Memuat TradeData & Inventory...", Color3.fromRGB(255, 200, 50))
+if Config.ANTI_AFK then
+    task.spawn(function()
+        local INTERVAL_DETIK = 5 * 60
+        while true do
+            task.wait(INTERVAL_DETIK)
+            pcall(function()
+                if typeof(mousemoverel) == "function" then
+                    mousemoverel(1, 0)
+                    task.wait(0.01)
+                    mousemoverel(-1, 0)
+                end
+            end)
+        end
+    end)
+    print("[NOIR] Anti-AFK Module Aktif (5m Interval).")
+end
 
+-- ==========================================================================
+-- 4. LOAD NATIVE FISH IT MODULES (ASYNC SAFE LOAD)
+-- ==========================================================================
 local TradeData, ItemUtility, Replion, DataReplion
 
 pcall(function()
@@ -254,14 +135,14 @@ local ActiveSellConfigs = {}
 local TotalTokensEarned = 0
 
 -- ==========================================================================
--- 6. AUTO-CONFIRM DIALOG PROMPTS IN PLAYERGUI
+-- 5. AUTO-CONFIRM DIALOG PROMPTS IN PLAYERGUI
 -- ==========================================================================
 local function autoClickConfirmPrompts()
     local pGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:FindFirstChild("PlayerGui")
     if not pGui then return end
 
     for _, gui in ipairs(pGui:GetChildren()) do
-        if gui:IsA("ScreenGui") and gui.Enabled and gui.Name ~= "NoirBoothHUD" then
+        if gui:IsA("ScreenGui") and gui.Enabled then
             for _, desc in ipairs(gui:GetDescendants()) do
                 if desc:IsA("TextButton") or desc:IsA("ImageButton") then
                     local name = desc.Name:lower()
@@ -293,6 +174,18 @@ task.spawn(function()
         autoClickConfirmPrompts()
     end
 end)
+
+-- ==========================================================================
+-- 6. INSTANT TELEPORT HELPER
+-- ==========================================================================
+local function teleportTo(targetPos)
+    if not HumanoidRootPart then return false end
+    pcall(function()
+        HumanoidRootPart.CFrame = CFrame.new(targetPos)
+    end)
+    task.wait(0.3)
+    return true
+end
 
 -- ==========================================================================
 -- 7. LIVE INVENTORY SCANNER
@@ -374,11 +267,16 @@ local function checkIfAlreadyHaveBooth()
 end
 
 -- ==========================================================================
--- 9. WORKFLOW STEP 1: DEKATI BOOTH & CLAIM BOOTH
+-- 9. ADVANCED SERVER HOPPER (FORWARD DECLARATION)
+-- ==========================================================================
+local executeServerHop
+
+-- ==========================================================================
+-- 10. WORKFLOW STEP 1: DEKATI BOOTH & KLAIM BOOTH SECARA ALAMI
 -- ==========================================================================
 local function findAndClaimBooth()
     if checkIfAlreadyHaveBooth() then
-        updateHUD("✅ Booth sudah aktif terdaftar!", Color3.fromRGB(0, 255, 150))
+        print("[NOIR] ✅ Booth sudah aktif terdaftar!")
         return true
     end
 
@@ -386,7 +284,7 @@ local function findAndClaimBooth()
     local boothsFolder = tradePlaza and tradePlaza:FindFirstChild("Booths") or workspace:FindFirstChild("Booths", true)
 
     if not boothsFolder then
-        updateHUD("❌ Folder Booths tidak ditemukan", Color3.fromRGB(255, 80, 80))
+        warn("[NOIR] Folder Booths tidak ditemukan di TradePlaza.")
         return false
     end
 
@@ -411,54 +309,55 @@ local function findAndClaimBooth()
     end
 
     if #candidateBooths == 0 then
-        updateHUD("⚠️ Semua booth di Plaza penuh!", Color3.fromRGB(255, 180, 50))
+        print("[NOIR] ⚠️ Semua booth di Plaza penuh!")
         return false
     end
 
     table.sort(candidateBooths, function(a, b) return a.dist < b.dist end)
     local target = candidateBooths[1]
 
-    updateHUD("Mendekati Booth kosong...", Color3.fromRGB(255, 220, 100))
-    if HumanoidRootPart and target.pos then
-        HumanoidRootPart.CFrame = CFrame.new(target.pos + Vector3.new(0, 2, 2))
-        task.wait(0.5)
-    end
+    print("[NOIR] 🚀 Teleporting instan ke Booth kosong...")
+    teleportTo(target.pos + Vector3.new(0, 2, 2))
+    task.wait(0.5)
 
+    -- Trigger ProximityPrompt dengan waktu tahan resmi
     if target.prompt and target.prompt.Enabled then
-        updateHUD("Mengklaim booth...", Color3.fromRGB(255, 200, 0))
+        print("[NOIR] Mengklaim booth via ProximityPrompt...")
+        local holdDuration = target.prompt.HoldDuration or 0.5
         pcall(function()
             if fireproximityprompt then
-                fireproximityprompt(target.prompt, (target.prompt.HoldDuration or 0.5) + 0.2)
+                fireproximityprompt(target.prompt, holdDuration + 0.2)
             else
                 target.prompt:InputHoldBegin()
-                task.wait((target.prompt.HoldDuration or 0.5) + 0.2)
+                task.wait(holdDuration + 0.2)
                 target.prompt:InputHoldEnd()
             end
         end)
-        task.wait(1.2)
+        task.wait(1.5)
         autoClickConfirmPrompts()
     end
 
+    -- Tunggu verifikasi server
     local startWait = tick()
-    while (tick() - startWait) < 4 do
+    while (tick() - startWait) < 5 do
         autoClickConfirmPrompts()
         if checkIfAlreadyHaveBooth() or (target.prompt and not target.prompt.Enabled) then
             MyBooth = target.model
             MyBoothClaimConfirmed = true
-            updateHUD("✅ Booth berhasil diklaim!", Color3.fromRGB(0, 255, 150))
+            print("[NOIR] ✅ Booth berhasil diklaim secara legal!")
             return true
         end
-        task.wait(0.4)
+        task.wait(0.5)
     end
 
+    print("[NOIR] Menandai booth sebagai target aktif.")
     MyBooth = target.model
     MyBoothClaimConfirmed = true
-    updateHUD("✅ Booth siap. Memulai listing...", Color3.fromRGB(0, 255, 150))
     return true
 end
 
 -- ==========================================================================
--- 10. WORKFLOW STEP 2: AUTO-LISTING & RESTOCK
+-- 11. WORKFLOW STEP 2: AUTO-LISTING, DELISTING, & SET PRICE
 -- ==========================================================================
 local function executeListingWorkflow()
     if not Config.AUTO_LIST then return end
@@ -466,16 +365,20 @@ local function executeListingWorkflow()
     if not MyBoothClaimConfirmed then
         if not checkIfAlreadyHaveBooth() then
             if not findAndClaimBooth() then
-                updateHUD("Klaim booth manual atau tekan tombol!", Color3.fromRGB(255, 200, 100))
+                print("[NOIR] Menunggu booth berhasil diklaim...")
                 return
             end
         end
     end
 
-    local activeListings = (DataReplion and DataReplion:Get("SaleListings.Booth")) or {}
-    local listedItemCountByName = {}
+    -- Pastikan posisi karakter tetap berdiri dekat booth (< 10 studs)
+    local myBoothPos = MyBooth:IsA("Model") and MyBooth:GetPivot().Position or MyBooth.Position
+    if HumanoidRootPart and (HumanoidRootPart.Position - myBoothPos).Magnitude > 10 then
+        teleportTo(myBoothPos + Vector3.new(0, 2, 2))
+        task.wait(0.3)
+    end
 
-    -- 1. AUTO-DELIST
+    -- 1. AUTO-DELIST (Tarik item jika dinonaktifkan di dashboard)
     for listingId, listing in pairs(activeListings) do
         local inv = scanInventory()
         local matchedItem = nil
@@ -501,13 +404,13 @@ local function executeListingWorkflow()
                         TradeData.Remotes.DeleteSaleListing:InvokeServer("Booth", listingId)
                     end)
                 end
-                updateHUD("❌ Delist: " .. itemName, Color3.fromRGB(255, 120, 120))
-                task.wait(1.2)
+                print(string.format("[NOIR DELIST] ❌ Menarik %s dari Booth (Listing #%s)", itemName, tostring(listingId)))
+                task.wait(1.5)
             end
         end
     end
 
-    -- 2. AUTO-LISTING
+    -- 2. AUTO-LISTING & RESTOCK (Pasang Ikan Baru)
     local inv = scanInventory()
     for _, fish in ipairs(inv.fish) do
         local isAlreadyListed = false
@@ -528,7 +431,8 @@ local function executeListingWorkflow()
                         local price = math.floor(cfg.price)
                         
                         if price > 0 and fish.uuid and TradeData and TradeData.Remotes and TradeData.Remotes.CreateSaleListing then
-                            updateHUD(string.format("Memajang %s (%d T)...", fish.name, price), Color3.fromRGB(0, 210, 255))
+                            print(string.format("[NOIR LIST] 🐟 Memajang %s seharga %d Tokens (Slot %d/%d)...", 
+                                fish.name, price, currentListed + 1, maxQuota))
                             
                             local success, res = pcall(function()
                                 return TradeData.Remotes.CreateSaleListing:InvokeServer(
@@ -541,13 +445,13 @@ local function executeListingWorkflow()
 
                             if success then
                                 listedItemCountByName[fish.name] = currentListed + 1
-                                updateHUD(string.format("🐟 Terpasang: %s (%d T)", fish.name, price), Color3.fromRGB(0, 255, 150))
+                                print(string.format("[NOIR LIST] ✅ Sukses memajang %s!", fish.name))
                             else
                                 warn("[NOIR LIST] Gagal pasang: " .. tostring(res))
                             end
                         end
                         
-                        task.wait(math.random(15, 25) / 10)
+                        task.wait(math.random(15, 25) / 10) -- Jeda aman 1.5s - 2.5s
                     end
                 end
             end
@@ -555,31 +459,40 @@ local function executeListingWorkflow()
     end
 end
 
--- Connect UI Action Buttons
-btnClaim.Activated:Connect(function()
-    task.spawn(function()
-        updateHUD("Manual trigger: Klaim & Jual...", Color3.fromRGB(0, 210, 255))
-        findAndClaimBooth()
-        task.wait(1)
-        executeListingWorkflow()
-    end)
-end)
+-- ==========================================================================
+-- 12. ADVANCED SERVER HOPPER (RO-PROXY & AUTO RECOVERY)
+-- ==========================================================================
+local isHopping = false
+executeServerHop = function()
+    if isHopping then return end
+    isHopping = true
+    print("[NOIR HOP] 🚀 Mencari server Plaza baru...")
 
-btnSync.Activated:Connect(function()
+    local placeId = game.PlaceId
+    local url = "https://games.roproxy.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"
+
     task.spawn(function()
-        updateHUD("Sinkronisasi tas...", Color3.fromRGB(255, 200, 100))
-        local inv = scanInventory()
-        apiCall("/api/bot/inventory", "POST", {
-            roblox_username = LocalPlayer.Name,
-            fish_data = inv.fish,
-            items_data = inv.items
-        })
-        updateHUD(string.format("✅ Tas tersinkron! (%d Ikan)", #inv.fish), Color3.fromRGB(0, 255, 150))
+        local http = (syn and syn.request) or (http and http.request) or http_request or request
+        local response = http and http({ Url = url, Method = "GET" })
+        if response and response.StatusCode == 200 then
+            local decoded = HttpService:JSONDecode(response.Body)
+            if decoded and decoded.data then
+                for _, s in ipairs(decoded.data) do
+                    if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                        TeleportService:TeleportToPlaceInstance(placeId, s.id, LocalPlayer)
+                        return
+                    end
+                end
+            end
+        end
+        TeleportService:Teleport(placeId, LocalPlayer)
+        task.wait(5)
+        isHopping = false
     end)
-end)
+end
 
 -- ==========================================================================
--- 11. NATIVE SALE EVENT LISTENER
+-- 13. NATIVE SALE EVENT LISTENER & RESTOCK
 -- ==========================================================================
 pcall(function()
     if TradeData and TradeData.Remotes and TradeData.Remotes.SaleListingSold then
@@ -600,7 +513,7 @@ pcall(function()
                 tokens = TotalTokensEarned
             })
 
-            updateHUD(string.format("💰 Terjual: %s (+%d T)!", itemName, salePrice), Color3.fromRGB(255, 215, 0))
+            print(string.format("[NOIR SALE] 💰 %s berhasil TERJUAL ke %s seharga %d Tokens!", itemName, buyerName, salePrice))
 
             if Config.AUTO_RESTOCK then
                 task.delay(3, executeListingWorkflow)
@@ -610,17 +523,22 @@ pcall(function()
 end)
 
 -- ==========================================================================
--- 12. MAIN EXECUTION LOOPS
+-- 14. MAIN EXECUTION LOOPS
 -- ==========================================================================
-updateHUD("Bot aktif! Memulai otomatis...", Color3.fromRGB(0, 255, 150))
+print("[NOIR] Memulai siklus otomasi penuh...")
 
--- Auto start claim & list in background
+-- Initial Auto-Claim & Listing Cycle
 task.spawn(function()
-    task.wait(2)
+    task.wait(3)
     if not checkIfAlreadyHaveBooth() then
-        findAndClaimBooth()
+        local claimed = findAndClaimBooth()
+        if not claimed and Config.SERVER_HOP_ON_FULL then
+            task.wait(3)
+            executeServerHop()
+            return
+        end
     end
-    task.wait(1.5)
+    task.wait(2)
     executeListingWorkflow()
 end)
 

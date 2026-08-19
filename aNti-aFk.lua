@@ -12,9 +12,9 @@ local function doFakeTap()
             mousemoverel(-1, 0)
         else
             local vim = typeof(cloneref) == "function" and cloneref(game:GetService("VirtualInputManager")) or game:GetService("VirtualInputManager")
-            vim:SendTouchEvent(0, 0, 10, 10)
+            vim:SendKeyEvent(true, Enum.KeyCode.LeftControl, false, game)
             task.wait(0.01)
-            vim:SendTouchEvent(0, 2, 10, 10)
+            vim:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game)
         end
     end)
 end

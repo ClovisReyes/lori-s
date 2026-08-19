@@ -1,6 +1,6 @@
 -- ==========================================================================
 --  🐟 FISH IT: AUTO BOOTH PLAZA (NOIR ENGINE v2.1)
---  100% RELIABLE AUTO-CLAIM, AUTO-LIST, RESTOCK & NOTIFIER
+--  LEAN & FAST: RANDOM BOOTH CLAIM, SHOPKEEPER POSITION, AUTO-LIST & TAX
 -- ==========================================================================
 
 repeat task.wait() until game:IsLoaded()
@@ -8,7 +8,6 @@ repeat task.wait() until game:IsLoaded()
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
 local StarterGui = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
@@ -36,9 +35,9 @@ local function notify(title, msg)
     end)
 end
 
-notify("Starting", "Memulai Noir Auto Booth v2.1...")
+notify("Starting", "Memulai Noir Auto Booth v2.1 (Lean Mode)...")
 
--- 1. Configuration Validation
+-- 1. Configuration
 local Config = getgenv().NOIR_CONFIG or {
     API_KEY = "NOIR-DEFAULT-ADMIN-KEY",
     SERVER_URL = "http://localhost:3000",
@@ -46,9 +45,6 @@ local Config = getgenv().NOIR_CONFIG or {
     AUTO_LIST = true,
     AUTO_RESTOCK = true,
     AUTO_DELIST = true,
-    SERVER_HOP_ON_FULL = true,
-    HOP_MODE = "Lowest",
-    ANTI_AFK = true,
     HEARTBEAT_INTERVAL = 15,
     INVENTORY_SYNC_INTERVAL = 30
 }
@@ -83,25 +79,7 @@ local function apiCall(endpoint, method, payload)
 end
 
 -- ==========================================================================
--- 3. STEALTH ANTI-AFK
--- ==========================================================================
-if Config.ANTI_AFK then
-    task.spawn(function()
-        while true do
-            task.wait(5 * 60)
-            pcall(function()
-                if typeof(mousemoverel) == "function" then
-                    mousemoverel(1, 0)
-                    task.wait(0.01)
-                    mousemoverel(-1, 0)
-                end
-            end)
-        end
-    end)
-end
-
--- ==========================================================================
--- 4. LOAD NATIVE FISH IT MODULES
+-- 3. LOAD NATIVE FISH IT MODULES
 -- ==========================================================================
 local TradeData, ItemUtility, Replion, DataReplion
 
@@ -117,7 +95,6 @@ pcall(function()
     Replion = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Replion"))
 end)
 
--- Function to safely fetch DataReplion
 local function getDataReplion()
     if DataReplion then return DataReplion end
     if Replion and Replion.Client then
@@ -141,48 +118,7 @@ local ActiveSellConfigs = {}
 local TotalTokensEarned = 0
 
 -- ==========================================================================
--- 5. AUTO-CONFIRM DIALOG PROMPTS IN PLAYERGUI
--- ==========================================================================
-local function autoClickConfirmPrompts()
-    local pGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:FindFirstChild("PlayerGui")
-    if not pGui then return end
-
-    for _, gui in ipairs(pGui:GetChildren()) do
-        if gui:IsA("ScreenGui") and gui.Enabled then
-            for _, desc in ipairs(gui:GetDescendants()) do
-                if desc:IsA("TextButton") or desc:IsA("ImageButton") then
-                    local name = desc.Name:lower()
-                    local text = (desc:IsA("TextButton") and desc.Text or ""):lower()
-                    
-                    if text:find("claim") or text:find("confirm") or text:find("yes") or text:find("accept") or text:find("ok")
-                       or name:find("claim") or name:find("confirm") or name:find("yes") or name:find("accept") then
-                        pcall(function()
-                            if desc.Visible then
-                                desc.Selectable = true
-                                for _, conn in ipairs(getconnections and getconnections(desc.Activated) or {}) do
-                                    conn:Fire()
-                                end
-                                for _, conn in ipairs(getconnections and getconnections(desc.MouseButton1Click) or {}) do
-                                    conn:Fire()
-                                end
-                            end
-                        end)
-                    end
-                end
-            end
-        end
-    end
-end
-
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        autoClickConfirmPrompts()
-    end
-end)
-
--- ==========================================================================
--- 6. LIVE INVENTORY SCANNER
+-- 4. LIVE INVENTORY SCANNER
 -- ==========================================================================
 local function scanInventory()
     local fishList = {}
@@ -232,11 +168,13 @@ local function scanInventory()
     return { fish = fishList, items = itemsList }
 end
 
--- Helper: Hitung CFrame tepat di BELAKANG booth (menghadap ke depan/pembeli)
+-- ==========================================================================
+-- 5. SHOPKEEPER POSITION HELPER (STAND BEHIND BOOTH FACING FORWARD)
+-- ==========================================================================
 local function getBehindBoothCFrame(boothModel, fallbackPos)
     if boothModel and boothModel:IsA("Model") then
         local pivot = boothModel:GetPivot()
-        -- Berdiri 4.2 studs di belakang booth pada ketinggian tanah (+1 stud)
+        -- Berdiri 4.2 studs di belakang meja booth pada ketinggian lantai
         local behindPos = pivot.Position - (pivot.LookVector * 4.2) + Vector3.new(0, 1, 0)
         return CFrame.lookAt(behindPos, behindPos + pivot.LookVector)
     elseif fallbackPos then
@@ -246,7 +184,7 @@ local function getBehindBoothCFrame(boothModel, fallbackPos)
 end
 
 -- ==========================================================================
--- 7. CHECK IF PLAYER ALREADY HAS A BOOTH
+-- 6. CHECK IF PLAYER ALREADY HAS A BOOTH
 -- ==========================================================================
 local function checkIfAlreadyHaveBooth()
     if MyBooth and MyBooth.Parent and MyBoothClaimConfirmed then
@@ -261,7 +199,7 @@ local function checkIfAlreadyHaveBooth()
             local owner = booth:GetAttribute("Owner") or booth:GetAttribute("OwnerName") or (booth:FindFirstChild("Owner") and booth.Owner.Value)
             local isMyOwner = owner and (tostring(owner) == LocalPlayer.Name or tostring(owner) == tostring(LocalPlayer.UserId))
             
-            -- Cek apakah prompt booth saat ini sudah berubah menjadi "Edit Booth"
+            -- Cek jika prompt berubah menjadi "Edit Booth"
             local editPrompt = booth:FindFirstChildWhichIsA("ProximityPrompt", true)
             local isEditBooth = editPrompt and (editPrompt.ActionText:lower():find("edit") or editPrompt.ObjectText:lower():find("booth"))
             local bPivot = booth:IsA("Model") and booth:GetPivot().Position or booth.Position
@@ -270,7 +208,7 @@ local function checkIfAlreadyHaveBooth()
                 MyBooth = booth
                 MyBoothClaimConfirmed = true
                 
-                -- Pindahkan karakter ke BELAKANG meja booth menghadap ke depan
+                -- Posisikan rapi di belakang booth
                 local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
                 local hrp = char:WaitForChild("HumanoidRootPart", 5) or char:FindFirstChild("HumanoidRootPart")
                 local targetCFrame = getBehindBoothCFrame(booth, bPivot)
@@ -288,39 +226,7 @@ local function checkIfAlreadyHaveBooth()
 end
 
 -- ==========================================================================
--- 8. ADVANCED SERVER HOPPER
--- ==========================================================================
-local isHopping = false
-local function executeServerHop()
-    if isHopping then return end
-    isHopping = true
-    notify("Server Hop", "Mencari server Plaza lain...")
-
-    local placeId = game.PlaceId
-    local url = "https://games.roproxy.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"
-
-    task.spawn(function()
-        local http = (syn and syn.request) or (http and http.request) or http_request or request
-        local response = http and http({ Url = url, Method = "GET" })
-        if response and response.StatusCode == 200 then
-            local decoded = HttpService:JSONDecode(response.Body)
-            if decoded and decoded.data then
-                for _, s in ipairs(decoded.data) do
-                    if s.playing < s.maxPlayers and s.id ~= game.JobId then
-                        TeleportService:TeleportToPlaceInstance(placeId, s.id, LocalPlayer)
-                        return
-                    end
-                end
-            end
-        end
-        TeleportService:Teleport(placeId, LocalPlayer)
-        task.wait(5)
-        isHopping = false
-    end)
-end
-
--- ==========================================================================
--- 9. WORKFLOW STEP 1: KLAIM & STAY DI BELAKANG BOOTH
+-- 7. WORKFLOW STEP 1: RANDOM BOOTH CLAIM (DIBELAKANG MEJA)
 -- ==========================================================================
 local function findAndClaimBooth()
     if checkIfAlreadyHaveBooth() then
@@ -369,12 +275,13 @@ local function findAndClaimBooth()
         return false
     end
 
-    table.sort(candidateBooths, function(a, b) return a.dist < b.dist end)
-    local target = candidateBooths[1]
+    -- ACAK BOOTH KOSONG (RANDOM PICK)
+    local randomIndex = math.random(1, #candidateBooths)
+    local target = candidateBooths[randomIndex]
 
-    notify("Claim Booth", "Teleporting ke belakang booth...")
+    notify("Claim Booth", string.format("Teleport ke booth acak (Slot %d/%d)...", randomIndex, #candidateBooths))
     
-    -- 1. Berdiri tepat di BELAKANG meja booth menghadap ke depan
+    -- 1. Teleport langsung ke BELAKANG meja booth menghadap ke depan
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local hrp = char:WaitForChild("HumanoidRootPart", 5) or char:FindFirstChild("HumanoidRootPart")
     local behindCFrame = getBehindBoothCFrame(target.model, target.pos)
@@ -385,7 +292,7 @@ local function findAndClaimBooth()
         task.wait(0.3)
     end
 
-    -- 2. Trigger ProximityPrompt klaim booth dari belakang
+    -- 2. Trigger ProximityPrompt klaim booth dari belakang (Langsung klaim tanpa dialog)
     if target.prompt and target.prompt.Enabled then
         pcall(function()
             if fireproximityprompt then
@@ -398,27 +305,24 @@ local function findAndClaimBooth()
                 fireproximityprompt(target.prompt, 0)
             end
         end)
-        task.wait(1.2)
-        autoClickConfirmPrompts()
+        task.wait(1)
     end
 
-    -- 3. Tunggu verifikasi server
+    -- 3. Verifikasi klaim
     local startWait = tick()
-    while (tick() - startWait) < 5 do
-        autoClickConfirmPrompts()
+    while (tick() - startWait) < 4 do
         if checkIfAlreadyHaveBooth() or (target.prompt and not target.prompt.Enabled) then
             MyBooth = target.model
             MyBoothClaimConfirmed = true
             
-            -- Pastikan tetap berdiri rapi di belakang booth
             if hrp and behindCFrame then
                 hrp.CFrame = behindCFrame
             end
 
-            notify("Sukses", "✅ Booth berhasil diklaim & siap jualan!")
+            notify("Sukses", "✅ Booth berhasil diklaim secara acak!")
             return true
         end
-        task.wait(0.4)
+        task.wait(0.3)
     end
 
     MyBooth = target.model
@@ -427,7 +331,7 @@ local function findAndClaimBooth()
 end
 
 -- ==========================================================================
--- 10. WORKFLOW STEP 2: AUTO-LISTING, DELISTING, & SET PRICE
+-- 8. WORKFLOW STEP 2: AUTO-LISTING, DELISTING, & PAJAK
 -- ==========================================================================
 local function executeListingWorkflow()
     if not Config.AUTO_LIST then return end
@@ -477,7 +381,7 @@ local function executeListingWorkflow()
         end
     end
 
-    -- 2. AUTO-LISTING & RESTOCK (Pasang Ikan Baru)
+    -- 2. AUTO-LISTING DENGAN PERHITUNGAN PAJAK (Contoh: 250 T -> 253 T di etalase)
     local inv = scanInventory()
     for _, fish in ipairs(inv.fish) do
         local isAlreadyListed = false
@@ -495,23 +399,25 @@ local function executeListingWorkflow()
                     local maxQuota = cfg.max_booth or 1
 
                     if currentListed < maxQuota then
-                        local price = math.floor(cfg.price)
+                        local netPrice = math.floor(cfg.price)
+                        -- Estimasi harga etalase setelah pajak game (+1.2% / pembulatan ke atas)
+                        local taxedPrice = math.ceil(netPrice * 1.012)
                         
-                        if price > 0 and fish.uuid and TradeData and TradeData.Remotes and TradeData.Remotes.CreateSaleListing then
-                            notify("Memajang", string.format("🐟 %s seharga %d Tokens...", fish.name, price))
+                        if netPrice > 0 and fish.uuid and TradeData and TradeData.Remotes and TradeData.Remotes.CreateSaleListing then
+                            notify("Memajang", string.format("🐟 %s (%d T -> Etalase: %d T)...", fish.name, netPrice, taxedPrice))
                             
                             local success, res = pcall(function()
                                 return TradeData.Remotes.CreateSaleListing:InvokeServer(
                                     "Booth",
                                     fish.item_type or fish.category or "Fish",
                                     fish.uuid,
-                                    price
+                                    netPrice
                                 )
                             end)
 
                             if success then
                                 listedItemCountByName[fish.name] = currentListed + 1
-                                notify("Sukses", string.format("✅ Terpasang: %s (%d T)", fish.name, price))
+                                notify("Sukses", string.format("✅ Terpasang: %s (%d T)", fish.name, netPrice))
                             else
                                 warn("[NOIR LIST] Gagal pasang: " .. tostring(res))
                             end
@@ -526,7 +432,7 @@ local function executeListingWorkflow()
 end
 
 -- ==========================================================================
--- 11. NATIVE SALE EVENT LISTENER & RESTOCK
+-- 9. NATIVE SALE EVENT LISTENER & RESTOCK
 -- ==========================================================================
 pcall(function()
     if TradeData and TradeData.Remotes and TradeData.Remotes.SaleListingSold then
@@ -557,7 +463,7 @@ pcall(function()
 end)
 
 -- ==========================================================================
--- 12. MAIN EXECUTION LOOPS
+-- 10. MAIN EXECUTION LOOPS
 -- ==========================================================================
 notify("Bot Ready", "Menjalankan siklus otomatis...")
 
@@ -565,12 +471,7 @@ notify("Bot Ready", "Menjalankan siklus otomatis...")
 task.spawn(function()
     task.wait(2)
     if not checkIfAlreadyHaveBooth() then
-        local claimed = findAndClaimBooth()
-        if not claimed and Config.SERVER_HOP_ON_FULL then
-            task.wait(3)
-            executeServerHop()
-            return
-        end
+        findAndClaimBooth()
     end
     task.wait(1.5)
     executeListingWorkflow()

@@ -342,17 +342,19 @@ local function findAndClaimBooth()
     table.sort(candidateBooths, function(a, b) return a.dist < b.dist end)
     local target = candidateBooths[1]
 
-    notify("Claim Booth", string.format("Teleporting ke booth (%d kosong)...", #candidateBooths))
+    notify("Claim Booth", string.format("Teleporting ke atas booth (%d kosong)...", #candidateBooths))
     
-    -- Teleportasi instan CFrame
+    -- Hitung posisi tepat di ATAS booth (atap booth)
+    local topPos = (target.model:IsA("Model") and target.model:GetPivot().Position) or target.pos
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local hrp = char:WaitForChild("HumanoidRootPart", 5) or char:FindFirstChild("HumanoidRootPart")
-    if hrp and target.pos then
+    if hrp and topPos then
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
-        hrp.CFrame = CFrame.new(target.pos + Vector3.new(0, 3, 0))
+        -- Berdiri di atas atap booth (ketinggian +7.5 studs)
+        hrp.CFrame = CFrame.new(topPos + Vector3.new(0, 7.5, 0))
         task.wait(0.3)
-        hrp.CFrame = CFrame.new(target.pos + Vector3.new(0, 3, 0))
+        hrp.CFrame = CFrame.new(topPos + Vector3.new(0, 7.5, 0))
         task.wait(0.3)
     end
 

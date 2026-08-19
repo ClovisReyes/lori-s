@@ -232,6 +232,19 @@ local function scanInventory()
     return { fish = fishList, items = itemsList }
 end
 
+-- Helper: Hitung CFrame tepat di BELAKANG booth (menghadap ke depan/pembeli)
+local function getBehindBoothCFrame(boothModel, fallbackPos)
+    if boothModel and boothModel:IsA("Model") then
+        local pivot = boothModel:GetPivot()
+        -- Berdiri 4.2 studs di belakang booth pada ketinggian tanah (+1 stud)
+        local behindPos = pivot.Position - (pivot.LookVector * 4.2) + Vector3.new(0, 1, 0)
+        return CFrame.lookAt(behindPos, behindPos + pivot.LookVector)
+    elseif fallbackPos then
+        return CFrame.new(fallbackPos + Vector3.new(0, 1, -4))
+    end
+    return nil
+end
+
 -- ==========================================================================
 -- 7. CHECK IF PLAYER ALREADY HAS A BOOTH
 -- ==========================================================================
@@ -257,13 +270,14 @@ local function checkIfAlreadyHaveBooth()
                 MyBooth = booth
                 MyBoothClaimConfirmed = true
                 
-                -- Pindahkan karakter ke ATAS papan blackboard agar tidak nyangkut di meja
+                -- Pindahkan karakter ke BELAKANG meja booth menghadap ke depan
                 local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
                 local hrp = char:WaitForChild("HumanoidRootPart", 5) or char:FindFirstChild("HumanoidRootPart")
-                if hrp and bPivot then
+                local targetCFrame = getBehindBoothCFrame(booth, bPivot)
+                if hrp and targetCFrame then
                     hrp.AssemblyLinearVelocity = Vector3.zero
                     hrp.AssemblyAngularVelocity = Vector3.zero
-                    hrp.CFrame = CFrame.new(bPivot + Vector3.new(0, 11, 0))
+                    hrp.CFrame = targetCFrame
                 end
                 return true
             end
@@ -306,7 +320,7 @@ local function executeServerHop()
 end
 
 -- ==========================================================================
--- 9. WORKFLOW STEP 1: KLAIM DI DEPAN PROMPT -> PINDAH KE ATAS
+-- 9. WORKFLOW STEP 1: KLAIM & STAY DI BELAKANG BOOTH
 -- ==========================================================================
 local function findAndClaimBooth()
     if checkIfAlreadyHaveBooth() then
@@ -358,19 +372,20 @@ local function findAndClaimBooth()
     table.sort(candidateBooths, function(a, b) return a.dist < b.dist end)
     local target = candidateBooths[1]
 
-    notify("Claim Booth", "Mendekati tombol klaim booth...")
+    notify("Claim Booth", "Teleporting ke belakang booth...")
     
-    -- 1. Berdiri tepat di depan tombol prompt (tidak nyangkut di meja)
+    -- 1. Berdiri tepat di BELAKANG meja booth menghadap ke depan
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local hrp = char:WaitForChild("HumanoidRootPart", 5) or char:FindFirstChild("HumanoidRootPart")
-    if hrp and target.pos then
+    local behindCFrame = getBehindBoothCFrame(target.model, target.pos)
+    if hrp and behindCFrame then
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
-        hrp.CFrame = CFrame.new(target.pos + Vector3.new(0, 1, 3))
+        hrp.CFrame = behindCFrame
         task.wait(0.3)
     end
 
-    -- 2. Trigger ProximityPrompt klaim booth
+    -- 2. Trigger ProximityPrompt klaim booth dari belakang
     if target.prompt and target.prompt.Enabled then
         pcall(function()
             if fireproximityprompt then
@@ -387,7 +402,7 @@ local function findAndClaimBooth()
         autoClickConfirmPrompts()
     end
 
-    -- 3. Tunggu verifikasi server & PINDAH KE ATAS ATAP SETELAH KLAIM
+    -- 3. Tunggu verifikasi server
     local startWait = tick()
     while (tick() - startWait) < 5 do
         autoClickConfirmPrompts()
@@ -395,15 +410,12 @@ local function findAndClaimBooth()
             MyBooth = target.model
             MyBoothClaimConfirmed = true
             
-            -- PINDAH KE ATAS ATAP BOOTH
-            local topPivot = (target.model:IsA("Model") and target.model:GetPivot().Position) or target.pos
-            if hrp and topPivot then
-                hrp.AssemblyLinearVelocity = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-                hrp.CFrame = CFrame.new(topPivot + Vector3.new(0, 11, 0))
+            -- Pastikan tetap berdiri rapi di belakang booth
+            if hrp and behindCFrame then
+                hrp.CFrame = behindCFrame
             end
 
-            notify("Sukses", "✅ Booth berhasil diklaim & pindah ke atas!")
+            notify("Sukses", "✅ Booth berhasil diklaim & siap jualan!")
             return true
         end
         task.wait(0.4)

@@ -37,10 +37,13 @@ end
 
 notify("Starting", "Memulai Noir Auto Booth v2.1 (Lean Mode)...")
 
--- 1. Configuration
-local Config = getgenv().NOIR_CONFIG or {
-    API_KEY = "NOIR-DEFAULT-ADMIN-KEY",
-    SERVER_URL = "http://localhost:3000",
+-- 1. Configuration Validation (Supports script_key format)
+local keyFromVar = script_key or (getgenv and getgenv().script_key) or (getgenv and getgenv().NOIR_CONFIG and getgenv().NOIR_CONFIG.API_KEY) or "NOIR-DEFAULT-ADMIN-KEY"
+local urlFromVar = (getgenv and getgenv().NOIR_CONFIG and getgenv().NOIR_CONFIG.SERVER_URL) or "http://localhost:3000"
+
+local Config = {
+    API_KEY = keyFromVar,
+    SERVER_URL = urlFromVar,
     AUTO_CLAIM_BOOTH = true,
     AUTO_LIST = true,
     AUTO_RESTOCK = true,
@@ -333,17 +336,21 @@ end
 -- ==========================================================================
 -- 8. WORKFLOW STEP 2: AUTO-LISTING, DELISTING, & PAJAK
 -- ==========================================================================
+local isListingWorkflowRunning = false
+
 local function executeListingWorkflow()
-    if not Config.AUTO_LIST then return end
-    
-    if not MyBoothClaimConfirmed then
-        if not checkIfAlreadyHaveBooth() then
-            if not findAndClaimBooth() then
-                notify("Status", "Menunggu booth berhasil diklaim...")
-                return
+    if not Config.AUTO_LIST or isListingWorkflowRunning then return end
+    isListingWorkflowRunning = true
+
+    local success, err = pcall(function()
+        if not MyBoothClaimConfirmed then
+            if not checkIfAlreadyHaveBooth() then
+                if not findAndClaimBooth() then
+                    notify("Status", "Menunggu booth berhasil diklaim...")
+                    return
+                end
             end
         end
-    end
 
     local rep = getDataReplion()
     local activeListings = (rep and rep:Get("SaleListings.Booth")) or {}
@@ -428,7 +435,8 @@ local function executeListingWorkflow()
                 end
             end
         end
-    end
+    end)
+    isListingWorkflowRunning = false
 end
 
 -- ==========================================================================

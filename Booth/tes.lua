@@ -1,7 +1,6 @@
 -- ==========================================================================
 --  🐟 FISH IT: AUTO BOOTH PLAZA (NOIR ENGINE v2.1)
---  FULL AUTOMATION: AUTO-CLAIM, AUTO-LIST, RESTOCK, ANTI-AFK, & SERVER HOP
---  100% STEALTH PHYSICS-BASED MOVEMENT (NO INSTANT TELEPORT / BAC SAFE)
+--  100% RELIABLE AUTO-CLAIM, AUTO-LIST, RESTOCK & NOTIFIER
 -- ==========================================================================
 
 repeat task.wait() until game:IsLoaded()
@@ -10,8 +9,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
-local GuiService = game:GetService("GuiService")
-local PathfindingService = game:GetService("PathfindingService")
+local StarterGui = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
 while not LocalPlayer do
@@ -20,14 +18,25 @@ while not LocalPlayer do
 end
 
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Humanoid = Character:WaitForChild("Humanoid", 10) or Character:FindFirstChildOfClass("Humanoid")
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart", 10) or Character:FindFirstChild("HumanoidRootPart")
 
 LocalPlayer.CharacterAdded:Connect(function(char)
     Character = char
-    Humanoid = char:WaitForChild("Humanoid", 10) or char:FindFirstChildOfClass("Humanoid")
     HumanoidRootPart = char:WaitForChild("HumanoidRootPart", 10) or char:FindFirstChild("HumanoidRootPart")
 end)
+
+local function notify(title, msg)
+    print(string.format("[NOIR] [%s] %s", tostring(title), tostring(msg)))
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "🐟 NOIR: " .. tostring(title),
+            Text = tostring(msg),
+            Duration = 4
+        })
+    end)
+end
+
+notify("Starting", "Memulai Noir Auto Booth v2.1...")
 
 -- 1. Configuration Validation
 local Config = getgenv().NOIR_CONFIG or {
@@ -44,16 +53,7 @@ local Config = getgenv().NOIR_CONFIG or {
     INVENTORY_SYNC_INTERVAL = 30
 }
 
-print([[
-==========================================================
-🐟 FISH IT: AUTO BOOTH PLAZA (NOIR ENGINE v2.1)
-🎯 FULL AUTO ACTIVE: CLAIM | LIST | RESTOCK | HOP | AFK
-==========================================================
-]])
-
--- ==========================================================================
--- 2. UNIVERSAL HTTP REQUEST WRAPPER
--- ==========================================================================
+-- 2. Universal HTTP Request Wrapper
 local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request or (delta and delta.request) or (fluxus and fluxus.request)
 
 local function apiCall(endpoint, method, payload)
@@ -83,13 +83,12 @@ local function apiCall(endpoint, method, payload)
 end
 
 -- ==========================================================================
--- 3. STEALTH ANTI-AFK (FAKE TAP / NO GETCONNECTIONS TAMPERING)
+-- 3. STEALTH ANTI-AFK
 -- ==========================================================================
 if Config.ANTI_AFK then
     task.spawn(function()
-        local INTERVAL_DETIK = 5 * 60
         while true do
-            task.wait(INTERVAL_DETIK)
+            task.wait(5 * 60)
             pcall(function()
                 if typeof(mousemoverel) == "function" then
                     mousemoverel(1, 0)
@@ -99,35 +98,42 @@ if Config.ANTI_AFK then
             end)
         end
     end)
-    print("[NOIR] Anti-AFK Module Aktif (5m Interval).")
 end
 
 -- ==========================================================================
--- 4. LOAD NATIVE FISH IT MODULES (ASYNC SAFE LOAD)
+-- 4. LOAD NATIVE FISH IT MODULES
 -- ==========================================================================
 local TradeData, ItemUtility, Replion, DataReplion
 
 pcall(function()
-    TradeData = require(ReplicatedStorage:WaitForChild("Shared", 5):WaitForChild("Trading", 5):WaitForChild("TradeData", 5))
+    TradeData = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Trading"):WaitForChild("TradeData"))
 end)
 
 pcall(function()
-    ItemUtility = require(ReplicatedStorage:WaitForChild("Shared", 5):WaitForChild("ItemUtility", 5))
+    ItemUtility = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ItemUtility"))
 end)
 
 pcall(function()
-    Replion = require(ReplicatedStorage:WaitForChild("Packages", 5):WaitForChild("Replion", 5))
+    Replion = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Replion"))
+end)
+
+-- Function to safely fetch DataReplion
+local function getDataReplion()
+    if DataReplion then return DataReplion end
     if Replion and Replion.Client then
-        if Replion.Client.GetReplion then
-            DataReplion = Replion.Client:GetReplion("Data")
-        end
+        pcall(function()
+            if Replion.Client.GetReplion then
+                DataReplion = Replion.Client:GetReplion("Data")
+            end
+        end)
         if not DataReplion and Replion.Client.WaitReplion then
-            task.spawn(function()
-                DataReplion = Replion.Client:WaitReplion("Data")
+            pcall(function()
+                DataReplion = Replion.Client:WaitReplion("Data", 5)
             end)
         end
     end
-end)
+    return DataReplion
+end
 
 local MyBooth = nil
 local MyBoothClaimConfirmed = false
@@ -176,28 +182,17 @@ task.spawn(function()
 end)
 
 -- ==========================================================================
--- 6. INSTANT TELEPORT HELPER
--- ==========================================================================
-local function teleportTo(targetPos)
-    if not HumanoidRootPart then return false end
-    pcall(function()
-        HumanoidRootPart.CFrame = CFrame.new(targetPos)
-    end)
-    task.wait(0.3)
-    return true
-end
-
--- ==========================================================================
--- 7. LIVE INVENTORY SCANNER
+-- 6. LIVE INVENTORY SCANNER
 -- ==========================================================================
 local function scanInventory()
     local fishList = {}
     local itemsList = {}
 
+    local rep = getDataReplion()
     local invData = nil
-    if DataReplion then
+    if rep then
         pcall(function()
-            invData = DataReplion:Get("Inventory") or DataReplion:GetExpect("Inventory")
+            invData = rep:Get("Inventory") or rep:GetExpect("Inventory")
         end)
     end
 
@@ -238,11 +233,12 @@ local function scanInventory()
 end
 
 -- ==========================================================================
--- 8. CHECK IF PLAYER ALREADY HAS A BOOTH
+-- 7. CHECK IF PLAYER ALREADY HAS A BOOTH
 -- ==========================================================================
 local function checkIfAlreadyHaveBooth()
-    if DataReplion then
-        local activeListings = DataReplion:Get("SaleListings.Booth")
+    local rep = getDataReplion()
+    if rep then
+        local activeListings = rep:Get("SaleListings.Booth")
         if activeListings ~= nil then
             MyBoothClaimConfirmed = true
             return true
@@ -267,16 +263,43 @@ local function checkIfAlreadyHaveBooth()
 end
 
 -- ==========================================================================
--- 9. ADVANCED SERVER HOPPER (FORWARD DECLARATION)
+-- 8. ADVANCED SERVER HOPPER
 -- ==========================================================================
-local executeServerHop
+local isHopping = false
+local function executeServerHop()
+    if isHopping then return end
+    isHopping = true
+    notify("Server Hop", "Mencari server Plaza lain...")
+
+    local placeId = game.PlaceId
+    local url = "https://games.roproxy.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"
+
+    task.spawn(function()
+        local http = (syn and syn.request) or (http and http.request) or http_request or request
+        local response = http and http({ Url = url, Method = "GET" })
+        if response and response.StatusCode == 200 then
+            local decoded = HttpService:JSONDecode(response.Body)
+            if decoded and decoded.data then
+                for _, s in ipairs(decoded.data) do
+                    if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                        TeleportService:TeleportToPlaceInstance(placeId, s.id, LocalPlayer)
+                        return
+                    end
+                end
+            end
+        end
+        TeleportService:Teleport(placeId, LocalPlayer)
+        task.wait(5)
+        isHopping = false
+    end)
+end
 
 -- ==========================================================================
--- 10. WORKFLOW STEP 1: DEKATI BOOTH & KLAIM BOOTH SECARA ALAMI
+-- 9. WORKFLOW STEP 1: DEKATI BOOTH & KLAIM BOOTH
 -- ==========================================================================
 local function findAndClaimBooth()
     if checkIfAlreadyHaveBooth() then
-        print("[NOIR] ✅ Booth sudah aktif terdaftar!")
+        notify("Booth", "✅ Booth sudah aktif terdaftar!")
         return true
     end
 
@@ -292,10 +315,10 @@ local function findAndClaimBooth()
     for _, booth in ipairs(boothsFolder:GetChildren()) do
         if booth.Name == "Booth" or booth:IsA("Model") then
             local claimAtt = booth:FindFirstChild("ClaimAttachment", true)
-            local prompt = claimAtt and claimAtt:FindFirstChildWhichIsA("ProximityPrompt")
+            local prompt = claimAtt and claimAtt:FindFirstChildWhichIsA("ProximityPrompt") or booth:FindFirstChildWhichIsA("ProximityPrompt", true)
             
             if prompt and prompt.Enabled then
-                local bPos = claimAtt.WorldPosition or (booth:IsA("Model") and booth:GetPivot().Position) or booth.Position
+                local bPos = (claimAtt and claimAtt.WorldPosition) or (booth:IsA("Model") and booth:GetPivot().Position) or booth.Position
                 local dist = (HumanoidRootPart and bPos) and (HumanoidRootPart.Position - bPos).Magnitude or 9999
                 table.insert(candidateBooths, {
                     model = booth,
@@ -309,28 +332,30 @@ local function findAndClaimBooth()
     end
 
     if #candidateBooths == 0 then
-        print("[NOIR] ⚠️ Semua booth di Plaza penuh!")
+        notify("Plaza Full", "⚠️ Semua booth di server ini penuh!")
         return false
     end
 
     table.sort(candidateBooths, function(a, b) return a.dist < b.dist end)
     local target = candidateBooths[1]
 
-    print("[NOIR] 🚀 Teleporting instan ke Booth kosong...")
-    teleportTo(target.pos + Vector3.new(0, 2, 2))
-    task.wait(0.5)
+    notify("Claim Booth", "Teleporting ke booth kosong...")
+    if HumanoidRootPart and target.pos then
+        HumanoidRootPart.CFrame = CFrame.new(target.pos + Vector3.new(0, 3, 2))
+        task.wait(0.5)
+    end
 
-    -- Trigger ProximityPrompt dengan waktu tahan resmi
+    -- Trigger ProximityPrompt
     if target.prompt and target.prompt.Enabled then
-        print("[NOIR] Mengklaim booth via ProximityPrompt...")
-        local holdDuration = target.prompt.HoldDuration or 0.5
         pcall(function()
             if fireproximityprompt then
-                fireproximityprompt(target.prompt, holdDuration + 0.2)
-            else
-                target.prompt:InputHoldBegin()
-                task.wait(holdDuration + 0.2)
-                target.prompt:InputHoldEnd()
+                fireproximityprompt(target.prompt)
+            end
+        end)
+        task.wait(0.2)
+        pcall(function()
+            if fireproximityprompt then
+                fireproximityprompt(target.prompt, 0)
             end
         end)
         task.wait(1.5)
@@ -344,20 +369,19 @@ local function findAndClaimBooth()
         if checkIfAlreadyHaveBooth() or (target.prompt and not target.prompt.Enabled) then
             MyBooth = target.model
             MyBoothClaimConfirmed = true
-            print("[NOIR] ✅ Booth berhasil diklaim secara legal!")
+            notify("Sukses", "✅ Booth berhasil diklaim!")
             return true
         end
         task.wait(0.5)
     end
 
-    print("[NOIR] Menandai booth sebagai target aktif.")
     MyBooth = target.model
     MyBoothClaimConfirmed = true
     return true
 end
 
 -- ==========================================================================
--- 11. WORKFLOW STEP 2: AUTO-LISTING, DELISTING, & SET PRICE
+-- 10. WORKFLOW STEP 2: AUTO-LISTING, DELISTING, & SET PRICE
 -- ==========================================================================
 local function executeListingWorkflow()
     if not Config.AUTO_LIST then return end
@@ -365,18 +389,15 @@ local function executeListingWorkflow()
     if not MyBoothClaimConfirmed then
         if not checkIfAlreadyHaveBooth() then
             if not findAndClaimBooth() then
-                print("[NOIR] Menunggu booth berhasil diklaim...")
+                notify("Status", "Menunggu booth berhasil diklaim...")
                 return
             end
         end
     end
 
-    -- Pastikan posisi karakter tetap berdiri dekat booth (< 10 studs)
-    local myBoothPos = MyBooth:IsA("Model") and MyBooth:GetPivot().Position or MyBooth.Position
-    if HumanoidRootPart and (HumanoidRootPart.Position - myBoothPos).Magnitude > 10 then
-        teleportTo(myBoothPos + Vector3.new(0, 2, 2))
-        task.wait(0.3)
-    end
+    local rep = getDataReplion()
+    local activeListings = (rep and rep:Get("SaleListings.Booth")) or {}
+    local listedItemCountByName = {}
 
     -- 1. AUTO-DELIST (Tarik item jika dinonaktifkan di dashboard)
     for listingId, listing in pairs(activeListings) do
@@ -404,7 +425,7 @@ local function executeListingWorkflow()
                         TradeData.Remotes.DeleteSaleListing:InvokeServer("Booth", listingId)
                     end)
                 end
-                print(string.format("[NOIR DELIST] ❌ Menarik %s dari Booth (Listing #%s)", itemName, tostring(listingId)))
+                notify("Delist", "❌ Menarik: " .. itemName)
                 task.wait(1.5)
             end
         end
@@ -431,8 +452,7 @@ local function executeListingWorkflow()
                         local price = math.floor(cfg.price)
                         
                         if price > 0 and fish.uuid and TradeData and TradeData.Remotes and TradeData.Remotes.CreateSaleListing then
-                            print(string.format("[NOIR LIST] 🐟 Memajang %s seharga %d Tokens (Slot %d/%d)...", 
-                                fish.name, price, currentListed + 1, maxQuota))
+                            notify("Memajang", string.format("🐟 %s seharga %d Tokens...", fish.name, price))
                             
                             local success, res = pcall(function()
                                 return TradeData.Remotes.CreateSaleListing:InvokeServer(
@@ -445,13 +465,13 @@ local function executeListingWorkflow()
 
                             if success then
                                 listedItemCountByName[fish.name] = currentListed + 1
-                                print(string.format("[NOIR LIST] ✅ Sukses memajang %s!", fish.name))
+                                notify("Sukses", string.format("✅ Terpasang: %s (%d T)", fish.name, price))
                             else
                                 warn("[NOIR LIST] Gagal pasang: " .. tostring(res))
                             end
                         end
                         
-                        task.wait(math.random(15, 25) / 10) -- Jeda aman 1.5s - 2.5s
+                        task.wait(math.random(15, 25) / 10)
                     end
                 end
             end
@@ -460,39 +480,7 @@ local function executeListingWorkflow()
 end
 
 -- ==========================================================================
--- 12. ADVANCED SERVER HOPPER (RO-PROXY & AUTO RECOVERY)
--- ==========================================================================
-local isHopping = false
-executeServerHop = function()
-    if isHopping then return end
-    isHopping = true
-    print("[NOIR HOP] 🚀 Mencari server Plaza baru...")
-
-    local placeId = game.PlaceId
-    local url = "https://games.roproxy.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"
-
-    task.spawn(function()
-        local http = (syn and syn.request) or (http and http.request) or http_request or request
-        local response = http and http({ Url = url, Method = "GET" })
-        if response and response.StatusCode == 200 then
-            local decoded = HttpService:JSONDecode(response.Body)
-            if decoded and decoded.data then
-                for _, s in ipairs(decoded.data) do
-                    if s.playing < s.maxPlayers and s.id ~= game.JobId then
-                        TeleportService:TeleportToPlaceInstance(placeId, s.id, LocalPlayer)
-                        return
-                    end
-                end
-            end
-        end
-        TeleportService:Teleport(placeId, LocalPlayer)
-        task.wait(5)
-        isHopping = false
-    end)
-end
-
--- ==========================================================================
--- 13. NATIVE SALE EVENT LISTENER & RESTOCK
+-- 11. NATIVE SALE EVENT LISTENER & RESTOCK
 -- ==========================================================================
 pcall(function()
     if TradeData and TradeData.Remotes and TradeData.Remotes.SaleListingSold then
@@ -513,7 +501,7 @@ pcall(function()
                 tokens = TotalTokensEarned
             })
 
-            print(string.format("[NOIR SALE] 💰 %s berhasil TERJUAL ke %s seharga %d Tokens!", itemName, buyerName, salePrice))
+            notify("Terjual!", string.format("💰 %s terjual (+%d Tokens)!", itemName, salePrice))
 
             if Config.AUTO_RESTOCK then
                 task.delay(3, executeListingWorkflow)
@@ -523,13 +511,13 @@ pcall(function()
 end)
 
 -- ==========================================================================
--- 14. MAIN EXECUTION LOOPS
+-- 12. MAIN EXECUTION LOOPS
 -- ==========================================================================
-print("[NOIR] Memulai siklus otomasi penuh...")
+notify("Bot Ready", "Menjalankan siklus otomatis...")
 
 -- Initial Auto-Claim & Listing Cycle
 task.spawn(function()
-    task.wait(3)
+    task.wait(2)
     if not checkIfAlreadyHaveBooth() then
         local claimed = findAndClaimBooth()
         if not claimed and Config.SERVER_HOP_ON_FULL then
@@ -538,13 +526,14 @@ task.spawn(function()
             return
         end
     end
-    task.wait(2)
+    task.wait(1.5)
     executeListingWorkflow()
 end)
 
 -- Heartbeat Loop (Setiap 15s)
 task.spawn(function()
     while task.wait(Config.HEARTBEAT_INTERVAL or 15) do
+        local rep = getDataReplion()
         local res = apiCall("/api/bot/heartbeat", "POST", {
             roblox_username = LocalPlayer.Name,
             roblox_user_id = tostring(LocalPlayer.UserId),

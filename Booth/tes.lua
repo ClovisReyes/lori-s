@@ -37,9 +37,9 @@ end
 
 notify("Starting", "Memulai Noir Auto Booth v2.1 (Lean Mode)...")
 
--- 1. Configuration Validation (Supports script_key format)
+-- 1. Configuration Validation (Supports script_key & server_url format)
 local keyFromVar = script_key or (getgenv and getgenv().script_key) or (getgenv and getgenv().NOIR_CONFIG and getgenv().NOIR_CONFIG.API_KEY) or "NOIR-DEFAULT-ADMIN-KEY"
-local urlFromVar = (getgenv and getgenv().NOIR_CONFIG and getgenv().NOIR_CONFIG.SERVER_URL) or "http://localhost:3000"
+local urlFromVar = server_url or (getgenv and getgenv().server_url) or (getgenv and getgenv().NOIR_CONFIG and getgenv().NOIR_CONFIG.SERVER_URL) or "http://localhost:3000"
 
 local Config = {
     API_KEY = keyFromVar,

@@ -246,9 +246,25 @@ local function checkIfAlreadyHaveBooth()
     if boothsFolder then
         for _, booth in ipairs(boothsFolder:GetChildren()) do
             local owner = booth:GetAttribute("Owner") or booth:GetAttribute("OwnerName") or (booth:FindFirstChild("Owner") and booth.Owner.Value)
-            if owner and (tostring(owner) == LocalPlayer.Name or tostring(owner) == tostring(LocalPlayer.UserId)) then
+            local isMyOwner = owner and (tostring(owner) == LocalPlayer.Name or tostring(owner) == tostring(LocalPlayer.UserId))
+            
+            -- Cek apakah prompt booth saat ini sudah berubah menjadi "Edit Booth"
+            local editPrompt = booth:FindFirstChildWhichIsA("ProximityPrompt", true)
+            local isEditBooth = editPrompt and (editPrompt.ActionText:lower():find("edit") or editPrompt.ObjectText:lower():find("booth"))
+            local bPivot = booth:IsA("Model") and booth:GetPivot().Position or booth.Position
+
+            if isMyOwner or (isEditBooth and HumanoidRootPart and bPivot and (HumanoidRootPart.Position - bPivot).Magnitude < 15) then
                 MyBooth = booth
                 MyBoothClaimConfirmed = true
+                
+                -- Pindahkan karakter ke ATAS papan blackboard agar tidak nyangkut di meja
+                local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                local hrp = char:WaitForChild("HumanoidRootPart", 5) or char:FindFirstChild("HumanoidRootPart")
+                if hrp and bPivot then
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                    hrp.CFrame = CFrame.new(bPivot + Vector3.new(0, 11, 0))
+                end
                 return true
             end
         end
@@ -290,7 +306,7 @@ local function executeServerHop()
 end
 
 -- ==========================================================================
--- 9. WORKFLOW STEP 1: DEKATI BOOTH & KLAIM BOOTH
+-- 9. WORKFLOW STEP 1: KLAIM DI DEPAN PROMPT -> PINDAH KE ATAS
 -- ==========================================================================
 local function findAndClaimBooth()
     if checkIfAlreadyHaveBooth() then
@@ -342,23 +358,19 @@ local function findAndClaimBooth()
     table.sort(candidateBooths, function(a, b) return a.dist < b.dist end)
     local target = candidateBooths[1]
 
-    notify("Claim Booth", string.format("Teleporting ke atas booth (%d kosong)...", #candidateBooths))
+    notify("Claim Booth", "Mendekati tombol klaim booth...")
     
-    -- Hitung posisi tepat di ATAS booth (atap booth)
-    local topPos = (target.model:IsA("Model") and target.model:GetPivot().Position) or target.pos
+    -- 1. Berdiri tepat di depan tombol prompt (tidak nyangkut di meja)
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local hrp = char:WaitForChild("HumanoidRootPart", 5) or char:FindFirstChild("HumanoidRootPart")
-    if hrp and topPos then
+    if hrp and target.pos then
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
-        -- Berdiri di atas atap booth (ketinggian +7.5 studs)
-        hrp.CFrame = CFrame.new(topPos + Vector3.new(0, 7.5, 0))
-        task.wait(0.3)
-        hrp.CFrame = CFrame.new(topPos + Vector3.new(0, 7.5, 0))
+        hrp.CFrame = CFrame.new(target.pos + Vector3.new(0, 1, 3))
         task.wait(0.3)
     end
 
-    -- Trigger ProximityPrompt klaim booth
+    -- 2. Trigger ProximityPrompt klaim booth
     if target.prompt and target.prompt.Enabled then
         pcall(function()
             if fireproximityprompt then
@@ -371,21 +383,30 @@ local function findAndClaimBooth()
                 fireproximityprompt(target.prompt, 0)
             end
         end)
-        task.wait(1.5)
+        task.wait(1.2)
         autoClickConfirmPrompts()
     end
 
-    -- Tunggu verifikasi server
+    -- 3. Tunggu verifikasi server & PINDAH KE ATAS ATAP SETELAH KLAIM
     local startWait = tick()
     while (tick() - startWait) < 5 do
         autoClickConfirmPrompts()
         if checkIfAlreadyHaveBooth() or (target.prompt and not target.prompt.Enabled) then
             MyBooth = target.model
             MyBoothClaimConfirmed = true
-            notify("Sukses", "✅ Booth berhasil diklaim!")
+            
+            -- PINDAH KE ATAS ATAP BOOTH
+            local topPivot = (target.model:IsA("Model") and target.model:GetPivot().Position) or target.pos
+            if hrp and topPivot then
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+                hrp.CFrame = CFrame.new(topPivot + Vector3.new(0, 11, 0))
+            end
+
+            notify("Sukses", "✅ Booth berhasil diklaim & pindah ke atas!")
             return true
         end
-        task.wait(0.5)
+        task.wait(0.4)
     end
 
     MyBooth = target.model

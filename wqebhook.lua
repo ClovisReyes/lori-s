@@ -339,6 +339,16 @@ if CONFIG.SendTestOnStartup then
     end)
 end
 
+-- Export ke Environment Global agar bisa dipanggil dari script lain / auto-fish
+if getgenv then
+    getgenv().SendCatchWebhook = sendCatchWebhook
+    getgenv().GetItemImageUrl  = getItemImageUrl
+    getgenv().ItemAssetCache   = ItemAssetCache
+end
+_G.SendCatchWebhook = sendCatchWebhook
+_G.GetItemImageUrl  = getItemImageUrl
+_G.ItemAssetCache   = ItemAssetCache
+
 return {
     SendCatchWebhook = sendCatchWebhook,
     GetItemImageUrl  = getItemImageUrl,

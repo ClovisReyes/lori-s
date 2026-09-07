@@ -1,360 +1,485 @@
--- ===================================================================
--- 🐟 FISH IT! - ULTRA BURIK & POTATO GRAPHICS OPTIMIZER (V4)
--- Khusus game Fish It! - Mode Full Burik Polos Tanpa Tekstur & Langit Hitam
--- ===================================================================
+if rconsoleclear then pcall(rconsoleclear) elseif consoleclear then pcall(consoleclear) end
 
-local Players = game:GetService("Players")
-local Lighting = game:GetService("Lighting")
-local SoundService = game:GetService("SoundService")
+local globalEnv = (getgenv and getgenv()) or _G
+
+-- Batalkan worker lama jika ada saat re-execute
+if globalEnv._FishItActiveWorker and typeof(globalEnv._FishItActiveWorker) == "thread" then
+    pcall(task.cancel, globalEnv._FishItActiveWorker)
+    globalEnv._FishItActiveWorker = nil
+end
+
+if globalEnv._FishItGCWorker and typeof(globalEnv._FishItGCWorker) == "thread" then
+    pcall(task.cancel, globalEnv._FishItGCWorker)
+    globalEnv._FishItGCWorker = nil
+end
+
+-- Disconnect semua koneksi lama saat re-run (Global, Player, dan Karakter)
+local function cleanupConnectionList(list)
+    if not list then return end
+    for _, item in pairs(list) do
+        if typeof(item) == "RBXScriptConnection" and item.Connected then
+            pcall(item.Disconnect, item)
+        elseif type(item) == "table" then
+            for _, subItem in ipairs(item) do
+                if typeof(subItem) == "RBXScriptConnection" and subItem.Connected then
+                    pcall(subItem.Disconnect, subItem)
+                end
+            end
+        end
+    end
+end
+
+cleanupConnectionList(globalEnv._FishItOptimizerConnections)
+cleanupConnectionList(globalEnv._FishItPlayerConnections)
+cleanupConnectionList(globalEnv._FishItCharacterConnections)
+
+globalEnv._FishItOptimizerConnections = {}
+globalEnv._FishItPlayerConnections = {}
+globalEnv._FishItCharacterConnections = {}
+
+local tracker = globalEnv._FishItOptimizerConnections
+local playerConnections = globalEnv._FishItPlayerConnections
+local characterConnections = globalEnv._FishItCharacterConnections
+
+local function trackConnection(conn)
+    table.insert(tracker, conn)
+    return conn
+end
+
+local game = game
+local workspace = workspace
+local getService = game.GetService
+
+local Players = getService(game, "Players")
+local Lighting = getService(game, "Lighting")
+local SoundService = getService(game, "SoundService")
+-- [SOLUSI 2] Pengaman Auto-Execute CloudPhone (Tunggu jika LocalPlayer belum siap)
 local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then
+    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    LocalPlayer = Players.LocalPlayer
+end
 
-print("🚀 [FISH IT!] Mengaktifkan Mode ULTRA BURIK MAKSIMAL...")
+local isA = game.IsA
+local findFirstChild = game.FindFirstChild
+local findFirstChildOfClass = game.FindFirstChildOfClass
+local getChildren = game.GetChildren
+local getDescendants = game.GetDescendants
+local destroy = game.Destroy
+local waitForChild = game.WaitForChild
+local getPlayerFromCharacter = Players.GetPlayerFromCharacter
 
--- ===================================================================
--- 1. BUNGKAM LOG "No HRP" & ERROR VISUAL
--- ===================================================================
-if hookfunction then
+local ipairs = ipairs
+local pairs = pairs
+local pcall = pcall
+local tostring = tostring
+local type = type
+local clock = os.clock
+local setmetatable = setmetatable
+local string_find = string.find
+local string_lower = string.lower
+local table_insert = table.insert
+local table_remove = table.remove
+
+local task = task
+local task_wait = task.wait
+local task_spawn = task.spawn
+
+local Color3_fromRGB = Color3.fromRGB
+local Instance_new = Instance.new
+local Enum = Enum
+local MATERIAL_SMOOTH_PLASTIC = Enum.Material.SmoothPlastic
+local QUALITY_LEVEL_01 = Enum.QualityLevel.Level01
+
+local COLOR_BLACK_VOID   = Color3_fromRGB(0, 0, 0)
+local COLOR_AMBIENT_BRIGHT = Color3_fromRGB(180, 180, 180)
+local COLOR_WATER_BLUE   = Color3_fromRGB(65, 165, 230)
+local BLACK_ASSET_ID     = "rbxassetid://144410044"
+local EMPTY_STR          = ""
+
+local FRAME_BUDGET_SEC = 0.004
+
+local processedCache = setmetatable({}, { __mode = "k" })
+
+local SAFE_TO_DESTROY = {
+    ["Group Fishing Visuals"] = true,
+    ["CosmeticFolder"]        = true,
+    ["Aquariums"]             = true,
+    ["!!! Aquariums"]         = true,
+    ["Radiant"]               = true,
+    ["Divine"]                = true,
+}
+
+local INVISIBLE_RIG_EXACT = {
+    ["EmoteCratePreviewRig"] = true,
+    ["FakeRig1"]             = true,
+    ["Props"]                = true,
+    ["Sunken Wreckage"]      = true,
+    ["FakeIslands"]          = true,
+}
+
+local PROMO_GUIS = {
+    ["!!! Click Effect"]       = true,
+    ["Border"]                 = true,
+    ["AreaHighlight"]          = true,
+    ["Exclusive Store"]        = true,
+    ["!!! Starter Pack"]       = true,
+    ["TokenShardsAd"]          = true,
+    ["BattlepassShop"]         = true,
+    ["EventLimitedShop"]       = true,
+    ["!!! BUY SPINS"]          = true,
+    ["Spin Wheel"]             = true,
+    ["LootboxDisplay"]         = true,
+    ["EmoteLootbox"]           = true,
+    ["!!! Gifting"]            = true,
+    ["BlackMarket"]            = true,
+    ["GalaxyEvent"]            = true,
+    ["PurchaseScreenBlackout"] = true,
+    ["EggIndicator"]           = true,
+}
+
+local function isPlayerDescendant(obj)
+    if not obj then return false end
+    if obj == LocalPlayer.Character then return true end
+    local parent = obj.Parent
+    while parent and parent ~= workspace do
+        if isA(parent, "Model") and (getPlayerFromCharacter(Players, parent) or (LocalPlayer and parent.Name == LocalPlayer.Name)) then
+            return true
+        end
+        parent = parent.Parent
+    end
+    return false
+end
+
+local function isBoothDescendant(obj)
+    if not obj then return false end
+    local cur = obj
+    while cur and cur ~= workspace do
+        local n = string_lower(cur.Name)
+        if string_find(n, "booth", 1, true) then
+            return true
+        end
+        cur = cur.Parent
+    end
+    return false
+end
+
+-- [SOLUSI 1] Whitelist Pancingan, Pelampung (Bobber), Tali, dan Indikator Strike
+local function isFishingDescendant(obj)
+    if not obj then return false end
+    local cur = obj
+    while cur and cur ~= workspace do
+        local n = string_lower(cur.Name)
+        if string_find(n, "bobber", 1, true)
+            or string_find(n, "rod", 1, true)
+            or string_find(n, "fishing", 1, true)
+            or string_find(n, "hook", 1, true)
+            or string_find(n, "bite", 1, true)
+            or string_find(n, "lure", 1, true)
+            or string_find(n, "strike", 1, true)
+            or string_find(n, "indicator", 1, true)
+            or string_find(n, "prompt", 1, true) then
+            return true
+        end
+        cur = cur.Parent
+    end
+    return false
+end
+
+if hookfunction and newcclosure and not globalEnv._FishItHooked then
+    globalEnv._FishItHooked = true
+    
     local oldPrint; oldPrint = hookfunction(print, newcclosure(function(...)
-        local args = {...}
-        local str = tostring(args[1])
-        if str == "No HRP" then return end
+        local firstArg = select(1, ...)
+        if tostring(firstArg) == "No HRP" then return end
         return oldPrint(...)
     end))
 
     local oldWarn; oldWarn = hookfunction(warn, newcclosure(function(...)
-        local args = {...}
-        local str = tostring(args[1])
-        if str == "No HRP" then return end
+        local firstArg = select(1, ...)
+        if tostring(firstArg) == "No HRP" then return end
         return oldWarn(...)
     end))
 end
 
--- ===================================================================
--- 2. SAFE HIDE CUACA (FOG & RAIN)
--- ===================================================================
-local function neutralizeWeather()
-    local fog = workspace:FindFirstChild("Vynozen FogEffect")
-    if fog then
-        for _, child in ipairs(fog:GetDescendants()) do
-            if child:IsA("BasePart") then
+-- [SOLUSI 6] Jangan destroy Atmosphere/PostEffect Lighting, cukup matikan saklarnya (Enabled = false)
+for _, item in ipairs(getChildren(Lighting)) do
+    if isA(item, "PostEffect") or isA(item, "Atmosphere") or isA(item, "Clouds") then
+        pcall(function() item.Enabled = false end)
+    elseif isA(item, "Sky") then
+        pcall(destroy, item)
+    end
+end
+
+local blackSky = Instance_new("Sky")
+blackSky.Name = "PotatoBlackSky"
+blackSky.SkyboxBk = BLACK_ASSET_ID
+blackSky.SkyboxDn = BLACK_ASSET_ID
+blackSky.SkyboxFt = BLACK_ASSET_ID
+blackSky.SkyboxLf = BLACK_ASSET_ID
+blackSky.SkyboxRt = BLACK_ASSET_ID
+blackSky.SkyboxUp = BLACK_ASSET_ID
+blackSky.CelestialBodiesShown = false
+blackSky.Parent = Lighting
+
+Lighting.GlobalShadows = false
+Lighting.FogColor = COLOR_BLACK_VOID
+Lighting.FogStart = 300
+Lighting.FogEnd = 1200
+Lighting.ClockTime = 14
+Lighting.Brightness = 1
+Lighting.EnvironmentDiffuseScale = 0
+Lighting.EnvironmentSpecularScale = 0
+Lighting.ExposureCompensation = 0
+Lighting.Ambient = COLOR_AMBIENT_BRIGHT
+Lighting.OutdoorAmbient = COLOR_AMBIENT_BRIGHT
+
+local terrain = workspace.Terrain
+if terrain then
+    terrain.WaterWaveSize = 0
+    terrain.WaterWaveSpeed = 0
+    terrain.WaterReflectance = 0
+    terrain.WaterTransparency = 0.9
+    terrain.WaterColor = COLOR_WATER_BLUE
+    if sethiddenproperty then
+        pcall(function() sethiddenproperty(terrain, "Decoration", false) end)
+    end
+end
+
+pcall(function()
+    settings().Rendering.QualityLevel = QUALITY_LEVEL_01
+end)
+
+local function handleWeatherInstance(inst)
+    if not inst then return end
+    local name = inst.Name
+    if name == "Rain" or name == "Vynozen FogEffect" or string_find(string_lower(name), "rain") or string_find(string_lower(name), "fog") then
+        task_wait(0.05)
+        for _, child in ipairs(getDescendants(inst)) do
+            if isA(child, "BasePart") then
                 child.Transparency = 1
                 child.CastShadow = false
-            elseif child:IsA("ParticleEmitter") or child:IsA("Beam") or child:IsA("PostEffect") then
+            elseif isA(child, "ParticleEmitter") or isA(child, "Beam") or isA(child, "PostEffect") then
                 child.Enabled = false
-            end
-        end
-    end
-
-    local rain = workspace:FindFirstChild("Rain")
-    if rain then
-        if rain:IsA("BasePart") then rain.Transparency = 1 end
-        for _, child in ipairs(rain:GetDescendants()) do
-            if child:IsA("ParticleEmitter") or child:IsA("Beam") then
-                child.Enabled = false
-            elseif child:IsA("BasePart") then
-                child.Transparency = 1
             end
         end
     end
 end
+
+local function neutralizeWeather()
+    local fog = findFirstChild(workspace, "Vynozen FogEffect")
+    if fog then handleWeatherInstance(fog) end
+
+    local rain = findFirstChild(workspace, "Rain")
+    if rain then handleWeatherInstance(rain) end
+end
 neutralizeWeather()
 
--- ===================================================================
--- 3. SEMBUNYIKAN RIG TOKO, DISPLAY, & DEKORASI
--- ===================================================================
+-- [SOLUSI 2] Dengarkan cuaca baru yang muncul di tengah permainan
+trackConnection(workspace.ChildAdded:Connect(function(child)
+    handleWeatherInstance(child)
+end))
+
 local function makeModelInvisible(model)
     if not model then return end
-    for _, item in ipairs(model:GetDescendants()) do
-        if item:IsA("BasePart") or item:IsA("Decal") then
+    for _, item in ipairs(getDescendants(model)) do
+        if isA(item, "BasePart") or isA(item, "Decal") then
             item.Transparency = 1
-            if item:IsA("BasePart") then
+            if isA(item, "BasePart") then
                 item.CastShadow = false
                 item.CanCollide = false
             end
-        elseif item:IsA("ParticleEmitter") or item:IsA("Beam") or item:IsA("Trail") or item:IsA("Highlight") or item:IsA("Light") then
+        elseif isA(item, "ParticleEmitter") or isA(item, "Beam") or isA(item, "Trail") or isA(item, "Highlight") or isA(item, "Light") then
             item.Enabled = false
         end
     end
 end
 
-for _, obj in ipairs(workspace:GetChildren()) do
+for _, obj in ipairs(getChildren(workspace)) do
     local name = obj.Name
-    if string.find(name, "Rig") or name == "EmoteCratePreviewRig" or name == "FakeRig1" or name == "Props" or name == "Sunken Wreckage" or name == "FakeIslands" then
-        makeModelInvisible(obj)
+    if not isBoothDescendant(obj) then
+        if INVISIBLE_RIG_EXACT[name] or string_find(name, "Rig") then
+            makeModelInvisible(obj)
+        end
+        if SAFE_TO_DESTROY[name] then
+            pcall(destroy, obj)
+        end
     end
 end
 
-local safeToDestroy = {
-    "Group Fishing Visuals",
-    "CosmeticFolder",
-    "Aquariums",
-    "!!! Aquariums",
-    "Radiant",
-    "Divine"
-}
-
-for _, name in ipairs(safeToDestroy) do
-    local obj = workspace:FindFirstChild(name)
-    if obj then pcall(function() obj:Destroy() end) end
-end
-
--- ===================================================================
--- 4. HAPUS SEMUA TEKSTUR, PBR, SURFACEAPPEARANCE & PARTIKEL (FULL BURIK)
--- ===================================================================
 local function makePotato(obj)
-    if obj:IsA("ParticleEmitter") or obj:IsA("Beam") or obj:IsA("Trail") or obj:IsA("Highlight") then
+    if not obj or processedCache[obj] then return end
+    -- [SOLUSI 1] Lindungi player, booth, dan pancingan/bobber
+    if isPlayerDescendant(obj) or isBoothDescendant(obj) or isFishingDescendant(obj) then return end
+    processedCache[obj] = true
+
+    if isA(obj, "ParticleEmitter") or isA(obj, "Beam") or isA(obj, "Trail") or isA(obj, "Highlight") then
         obj.Enabled = false
-    elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+    elseif isA(obj, "PointLight") or isA(obj, "SpotLight") or isA(obj, "SurfaceLight") then
         obj.Enabled = false
-    elseif obj:IsA("SurfaceAppearance") then
-        -- Hapus tekstur PBR HD
-        pcall(function() obj:Destroy() end)
-    elseif obj:IsA("Decal") or obj:IsA("Texture") then
-        -- Hapus semua stiker & tekstur permukaan
+    elseif isA(obj, "SurfaceAppearance") then
+        pcall(destroy, obj)
+    elseif isA(obj, "Decal") or isA(obj, "Texture") then
         obj.Transparency = 1
-        pcall(function() obj:Destroy() end)
-    elseif obj:IsA("MeshPart") then
-        -- Hapus tekstur & ubah warna jadi abu-abu flat seragam
-        obj.TextureID = ""
-        obj.Material = Enum.Material.SmoothPlastic
+        pcall(destroy, obj)
+    elseif isA(obj, "MeshPart") then
+        obj.TextureID = EMPTY_STR
+        obj.Material = MATERIAL_SMOOTH_PLASTIC
         obj.CastShadow = false
         obj.Reflectance = 0
-        if obj.Transparency < 1 then
-            obj.Color = Color3.fromRGB(160, 160, 160)
-        end
-    elseif obj:IsA("SpecialMesh") then
-        obj.TextureId = ""
-    elseif obj:IsA("BasePart") then
-        obj.Material = Enum.Material.SmoothPlastic
+    elseif isA(obj, "SpecialMesh") then
+        obj.TextureId = EMPTY_STR
+    elseif isA(obj, "BasePart") then
+        obj.Material = MATERIAL_SMOOTH_PLASTIC
         obj.CastShadow = false
         obj.Reflectance = 0
-        if obj.Transparency < 1 then
-            obj.Color = Color3.fromRGB(160, 160, 160)
+    elseif isA(obj, "BillboardGui") or isA(obj, "SurfaceGui") then
+        obj.Enabled = false
+    elseif isA(obj, "Sound") then
+        obj.Volume = 0
+    end
+end
+
+-- [SOLUSI 4] Bersihkan koneksi karakter lama saat respawn
+local function optimizeCharacter(char, player)
+    if not char or not isA(char, "Model") or processedCache[char] then return end
+    processedCache[char] = true
+
+    -- Bersihkan koneksi karakter sebelumnya jika ada
+    if player and characterConnections[player] then
+        for _, conn in ipairs(characterConnections[player]) do
+            if conn and conn.Connected then pcall(conn.Disconnect, conn) end
         end
+        characterConnections[player] = {}
     end
-end
 
--- Terapkan ke seluruh objek di Workspace
-for _, obj in ipairs(workspace:GetDescendants()) do
-    makePotato(obj)
-end
-
--- Listener untuk objek baru
-workspace.DescendantAdded:Connect(function(obj)
-    task.wait()
-    makePotato(obj)
-end)
-
--- ===================================================================
--- 5. LANGIT HITAM PEKAT & AIR BIRU POLOS JERNIH
--- ===================================================================
--- Hapus semua efek langit, atmosfer, dan post processing
-for _, item in ipairs(Lighting:GetChildren()) do
-    if item:IsA("PostEffect") or item:IsA("Atmosphere") or item:IsA("Sky") or item:IsA("Clouds") then
-        pcall(function() item:Destroy() end)
-    end
-end
-
--- Skybox Hitam Pekat Asli (Pure Solid Black Void 100%)
-local blackAsset = "rbxassetid://144410044"
-local blackSky = Instance.new("Sky")
-blackSky.Name = "PotatoBlackSky"
-blackSky.SkyboxBk = blackAsset
-blackSky.SkyboxDn = blackAsset
-blackSky.SkyboxFt = blackAsset
-blackSky.SkyboxLf = blackAsset
-blackSky.SkyboxRt = blackAsset
-blackSky.SkyboxUp = blackAsset
-blackSky.CelestialBodiesShown = false
-blackSky.Parent = Lighting
-
--- Pencahayaan Flat & Kabut Hitam Pekat Void
-Lighting.GlobalShadows = false
-Lighting.FogColor = Color3.fromRGB(0, 0, 0)
-Lighting.FogStart = 300
-Lighting.FogEnd = 1200
-Lighting.ClockTime = 0
-Lighting.Brightness = 0
-Lighting.EnvironmentDiffuseScale = 0
-Lighting.EnvironmentSpecularScale = 0
-Lighting.ExposureCompensation = 0
-Lighting.Ambient = Color3.fromRGB(150, 150, 150)
-Lighting.OutdoorAmbient = Color3.fromRGB(0, 0, 0)
-
--- Optimasi Terrain & Air (Biru Jernih, 0 Gelombang, 0 Beban GPU)
-if workspace.Terrain then
-    workspace.Terrain.WaterWaveSize = 0
-    workspace.Terrain.WaterWaveSpeed = 0
-    workspace.Terrain.WaterReflectance = 0
-    workspace.Terrain.WaterTransparency = 0.9
-    workspace.Terrain.WaterColor = Color3.fromRGB(65, 165, 230)
-    if sethiddenproperty then
-        pcall(function() sethiddenproperty(workspace.Terrain, "Decoration", false) end)
-    end
-end
-
--- Turunkan Quality Level Roblox Engine ke level 1
-pcall(function()
-    settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-end)
-
--- ===================================================================
--- 6. SEMBUNYIKAN PLAYER LAIN & KARAKTER KITA (GHOST MODE - PERSISTEN RESPAWN)
--- ===================================================================
-local function cleanItem(item, isLocal)
-    if item:IsA("Accessory") or item:IsA("Shirt") or item:IsA("Pants") or item:IsA("ShirtGraphic") or item:IsA("CharacterMesh") or item:IsA("SurfaceAppearance") then
-        pcall(function() item:Destroy() end)
-    elseif item:IsA("MeshPart") then
-        item.TextureID = ""
-        item.Transparency = 1
-        item.CastShadow = false
-    elseif item:IsA("BasePart") or item:IsA("Decal") then
-        item.Transparency = 1
-        if item:IsA("BasePart") then
+    local function processCharItem(item)
+        if not item then return end
+        if isFishingDescendant(item) then return end
+        if isA(item, "Accessory") or isA(item, "Shirt") or isA(item, "Pants") or isA(item, "ShirtGraphic") or isA(item, "CharacterMesh") or isA(item, "SurfaceAppearance") then
+            pcall(destroy, item)
+        elseif isA(item, "Decal") then
+            pcall(destroy, item)
+        elseif isA(item, "SpecialMesh") and item.Parent and item.Parent.Name == "Head" then
+            pcall(destroy, item)
+        elseif isA(item, "ParticleEmitter") or isA(item, "Beam") or isA(item, "Trail") or isA(item, "Highlight") or isA(item, "Light") or isA(item, "Fire") or isA(item, "Smoke") then
+            item.Enabled = false
+        elseif isA(item, "BasePart") then
+            item.Material = MATERIAL_SMOOTH_PLASTIC
             item.CastShadow = false
-            item.Material = Enum.Material.SmoothPlastic
-            if not isLocal then item.CanCollide = false end
+            item.Reflectance = 0
         end
-    elseif item:IsA("ParticleEmitter") or item:IsA("Beam") or item:IsA("Trail") then
-        item.Enabled = false
+    end
+
+    for _, item in ipairs(getDescendants(char)) do
+        processCharItem(item)
+    end
+
+    local charConn = char.DescendantAdded:Connect(function(item)
+        processCharItem(item)
+    end)
+
+    if player then
+        if not characterConnections[player] then characterConnections[player] = {} end
+        table_insert(characterConnections[player], charConn)
+    else
+        trackConnection(charConn)
     end
 end
 
-local function cleanCharacter(char, isLocal)
-    if not char then return end
-    
-    -- Bersihkan item yang sudah ada
-    for _, item in ipairs(char:GetDescendants()) do
-        cleanItem(item, isLocal)
+-- Setup LocalPlayer
+if LocalPlayer.Character then optimizeCharacter(LocalPlayer.Character, LocalPlayer) end
+trackConnection(LocalPlayer.CharacterAdded:Connect(function(c)
+    optimizeCharacter(c, LocalPlayer)
+end))
+
+-- [SOLUSI 4] Tangani Player lain & bersihkan memori saat player keluar (PlayerRemoving)
+local function trackOtherPlayer(p)
+    if p == LocalPlayer then return end
+    playerConnections[p] = {}
+
+    local caConn = p.CharacterAdded:Connect(function(c)
+        optimizeCharacter(c, p)
+    end)
+    table_insert(playerConnections[p], caConn)
+
+    if p.Character then
+        optimizeCharacter(p.Character, p)
+    end
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+    trackOtherPlayer(p)
+end
+
+trackConnection(Players.PlayerAdded:Connect(trackOtherPlayer))
+
+trackConnection(Players.PlayerRemoving:Connect(function(p)
+    if playerConnections[p] then
+        for _, conn in ipairs(playerConnections[p]) do
+            if conn and conn.Connected then pcall(conn.Disconnect, conn) end
+        end
+        playerConnections[p] = nil
+    end
+    if characterConnections[p] then
+        for _, conn in ipairs(characterConnections[p]) do
+            if conn and conn.Connected then pcall(conn.Disconnect, conn) end
+        end
+        characterConnections[p] = nil
+    end
+end))
+
+-- [SOLUSI 3] JANGAN Destroy Animator NPC agar script toko/jual ikan tidak crash
+local function cleanNPC(npc)
+    if not npc or not isA(npc, "Model") or processedCache[npc] then return end
+    processedCache[npc] = true
+
+    local hum = findFirstChildOfClass(npc, "Humanoid")
+    if hum then
+        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        hum.NameDisplayDistance = 0
+        hum.HealthDisplayDistance = 0
+        -- Animator dipertahankan agar fungsi quest/toko ikan berjalan normal
     end
 
-    -- Tangani baju/topi/rambut yang baru dimuat terlambat oleh server
-    char.DescendantAdded:Connect(function(item)
-        task.wait()
-        cleanItem(item, isLocal)
-    end)
-
-    -- Atur Humanoid
-    task.spawn(function()
-        local hum = char:WaitForChild("Humanoid", 5)
-        if hum and not isLocal then
-            hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-            hum.NameDisplayDistance = 0
-            hum.HealthDisplayDistance = 0
-            local anim = hum:FindFirstChildOfClass("Animator")
-            if anim then anim:Destroy() end
-        end
-    end)
-end
-
--- Listener Pemain Lain
-local function setupOtherPlayer(player)
-    if player == LocalPlayer then return end
-    if player.Character then cleanCharacter(player.Character, false) end
-    player.CharacterAdded:Connect(function(c)
-        cleanCharacter(c, false)
-    end)
-end
-
-for _, p in ipairs(Players:GetPlayers()) do setupOtherPlayer(p) end
-Players.PlayerAdded:Connect(setupOtherPlayer)
-
--- ===================================================================
--- 7. HILANGKAN JORAN / UMPAN / LENTERA (TRANSPARENCY 1)
--- ===================================================================
-local function cleanRod(char)
-    if not char then return end
-    local function hideTool(child)
-        local n = child.Name
-        if string.find(n, "FISHING") or string.find(n, "BAIT") or string.find(n, "LANTERN") or string.find(n, "VIEW_MODEL") then
-            if child:IsA("MeshPart") then child.TextureID = "" end
-            if child:IsA("BasePart") then
-                child.Transparency = 1
-                child.CastShadow = false
+    for _, item in ipairs(getDescendants(npc)) do
+        if not isA(item, "ProximityPrompt") then
+            if isA(item, "Accessory") or isA(item, "Shirt") or isA(item, "Pants") or isA(item, "ShirtGraphic") or isA(item, "CharacterMesh") or isA(item, "Decal") then
+                pcall(destroy, item)
+            elseif isA(item, "SpecialMesh") and item.Parent and item.Parent.Name == "Head" then
+                pcall(destroy, item)
+            elseif isA(item, "MeshPart") then
+                item.TextureID = EMPTY_STR
+                item.Material = MATERIAL_SMOOTH_PLASTIC
+                item.CastShadow = false
+            elseif isA(item, "BasePart") then
+                item.Material = MATERIAL_SMOOTH_PLASTIC
+                item.CastShadow = false
+            elseif isA(item, "ParticleEmitter") or isA(item, "Beam") or isA(item, "Trail") or isA(item, "Highlight") then
+                item.Enabled = false
             end
-            for _, item in ipairs(child:GetDescendants()) do
-                if item:IsA("MeshPart") then item.TextureID = "" end
-                if item:IsA("BasePart") or item:IsA("Decal") then
-                    item.Transparency = 1
-                    item.CastShadow = false
-                elseif item:IsA("Beam") or item:IsA("ParticleEmitter") or item:IsA("Light") then
-                    item.Enabled = false
-                end
-            end
         end
     end
-    for _, c in ipairs(char:GetChildren()) do hideTool(c) end
-    char.ChildAdded:Connect(function(c) task.wait(); hideTool(c) end)
 end
 
--- Listener Karakter Kita Sendiri (Otomatis jalan setiap kali respawn)
-local function onLocalCharacterSpawn(c)
-    cleanCharacter(c, true)
-    cleanRod(c)
-end
-
-if LocalPlayer.Character then onLocalCharacterSpawn(LocalPlayer.Character) end
-LocalPlayer.CharacterAdded:Connect(onLocalCharacterSpawn)
-
--- Listener Tambahan jika karakter di-parent ke folder workspace.Characters
-local charFolder = workspace:FindFirstChild("Characters")
-if charFolder then
-    charFolder.ChildAdded:Connect(function(c)
-        task.wait(0.05)
-        if c.Name == LocalPlayer.Name then
-            onLocalCharacterSpawn(c)
-        else
-            cleanCharacter(c, false)
-        end
-    end)
-end
-
--- ===================================================================
--- 8. BERSIHKAN BANNER PROMOSI, POPUP TOKO, & 3D FLOATING TEXT
--- ===================================================================
--- A. Bersihkan 3D Floating Text & Billboard Iklan di Workspace
-for _, gui in ipairs(workspace:GetDescendants()) do
-    if gui:IsA("BillboardGui") or gui:IsA("SurfaceGui") then
-        gui.Enabled = false
-    end
-end
-workspace.DescendantAdded:Connect(function(gui)
-    if gui:IsA("BillboardGui") or gui:IsA("SurfaceGui") then
-        task.wait()
-        gui.Enabled = false
-    end
-end)
-
--- B. Bersihkan ScreenGui Promosi & Popup di PlayerGui
-local pgui = LocalPlayer:WaitForChild("PlayerGui", 5)
+local pgui = waitForChild(LocalPlayer, "PlayerGui", 5)
 if pgui then
-    local promoGuis = {
-        "!!! Click Effect", "Border", "AreaHighlight",
-        "Exclusive Store", "!!! Starter Pack", "TokenShardsAd",
-        "BattlepassShop", "EventLimitedShop", "!!! BUY SPINS",
-        "Spin Wheel", "LootboxDisplay", "EmoteLootbox",
-        "!!! Gifting", "BlackMarket", "GalaxyEvent",
-        "PurchaseScreenBlackout", "EggIndicator"
-    }
-    
-    for _, gName in ipairs(promoGuis) do
-        local g = pgui:FindFirstChild(gName)
-        if g then
-            if g:IsA("ScreenGui") or g:IsA("BillboardGui") then
+    for _, g in ipairs(getChildren(pgui)) do
+        if PROMO_GUIS[g.Name] then
+            if isA(g, "ScreenGui") or isA(g, "BillboardGui") then
                 g.Enabled = false
             else
-                pcall(function() g:Destroy() end)
+                pcall(destroy, g)
             end
         end
     end
 
-    -- Sembunyikan frame banner iklan di dalam HUD (seperti Lightning Pack)
-    local hud = pgui:FindFirstChild("HUD")
+    local hud = findFirstChild(pgui, "HUD")
     if hud then
-        for _, elem in ipairs(hud:GetDescendants()) do
-            local elemName = string.lower(elem.Name)
-            if string.find(elemName, "banner") or string.find(elemName, "pack") or string.find(elemName, "offer") or string.find(elemName, "promo") or string.find(elemName, "bundle") then
-                if elem:IsA("GuiObject") then
+        for _, elem in ipairs(getDescendants(hud)) do
+            local elemName = string_lower(elem.Name)
+            if string_find(elemName, "banner") or string_find(elemName, "pack") or string_find(elemName, "offer") or string_find(elemName, "promo") or string_find(elemName, "bundle") then
+                if isA(elem, "GuiObject") then
                     elem.Visible = false
                 end
             end
@@ -362,112 +487,106 @@ if pgui then
     end
 end
 
--- ===================================================================
--- 9. OPTIMASI 88 NPC DI MAP (HEMAT CPU & TETAP BISA BELANJA/INTERAKSI)
--- ===================================================================
-local function cleanNPC(npc)
-    if not npc or not npc:IsA("Model") then return end
-    task.spawn(function()
-        local hum = npc:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-            hum.NameDisplayDistance = 0
-            hum.HealthDisplayDistance = 0
-            local anim = hum:FindFirstChildOfClass("Animator")
-            if anim then anim:Destroy() end -- Hentikan komputasi animasi CPU
+local function runAdaptiveBatch(items, handler)
+    local total = #items
+    if total == 0 then return end
+
+    local start = clock()
+    for i = 1, total do
+        local obj = items[i]
+        if obj then
+            handler(obj)
         end
 
-        for _, item in ipairs(npc:GetDescendants()) do
-            -- Pertahankan ProximityPrompt agar interaksi tetap berfungsi 100%
-            if not item:IsA("ProximityPrompt") then
-                if item:IsA("Accessory") or item:IsA("Shirt") or item:IsA("Pants") or item:IsA("ShirtGraphic") or item:IsA("CharacterMesh") then
-                    item:Destroy()
-                elseif item:IsA("MeshPart") then
-                    item.TextureID = ""
-                    item.Material = Enum.Material.SmoothPlastic
-                    item.CastShadow = false
-                    item.Color = Color3.fromRGB(160, 160, 160)
-                elseif item:IsA("BasePart") then
-                    item.Material = Enum.Material.SmoothPlastic
-                    item.CastShadow = false
-                    item.Color = Color3.fromRGB(160, 160, 160)
-                elseif item:IsA("ParticleEmitter") or item:IsA("Beam") or item:IsA("Trail") or item:IsA("Highlight") then
-                    item.Enabled = false
+        if (clock() - start) >= FRAME_BUDGET_SEC then
+            task_wait()
+            start = clock()
+        end
+    end
+end
+
+globalEnv._FishItActiveWorker = task_spawn(function()
+    local npcFolder = findFirstChild(workspace, "NPC")
+    if npcFolder then
+        runAdaptiveBatch(getChildren(npcFolder), cleanNPC)
+    end
+
+    -- [SOLUSI 5] Bersihkan bertahap per-folder di workspace (Mencegah lonjakan RAM 100k+ instansi di CloudPhone/HP)
+    for _, child in ipairs(getChildren(workspace)) do
+        if child ~= terrain and not isBoothDescendant(child) and not isPlayerDescendant(child) and not isFishingDescendant(child) then
+            makePotato(child)
+            local descendants = getDescendants(child)
+            if #descendants > 0 then
+                runAdaptiveBatch(descendants, makePotato)
+            end
+        end
+    end
+
+    local sounds = getDescendants(SoundService)
+    runAdaptiveBatch(sounds, function(s)
+        if isA(s, "Sound") then s.Volume = 0 end
+    end)
+
+    globalEnv._FishItActiveWorker = nil
+end)
+
+-- [SOLUSI 5] Queue Throttling: Kumpulkan objek baru dan proses secara batch (Anti Lag Spikes/Stutter)
+local pendingQueue = {}
+local isBatchProcessing = false
+
+local function processBatchQueue()
+    if isBatchProcessing then return end
+    isBatchProcessing = true
+
+    task_spawn(function()
+        task_wait(0.05) -- Debounce kecil untuk mengumpulkan banyak instance sekaligus
+        while #pendingQueue > 0 do
+            local start = clock()
+            while #pendingQueue > 0 do
+                local obj = table_remove(pendingQueue)
+                if obj and obj.Parent then
+                    makePotato(obj)
+                end
+                if (clock() - start) >= FRAME_BUDGET_SEC then
+                    task_wait()
+                    start = clock()
                 end
             end
         end
+        isBatchProcessing = false
     end)
 end
 
-local npcFolder = workspace:FindFirstChild("NPC")
+trackConnection(workspace.DescendantAdded:Connect(function(obj)
+    if not obj or processedCache[obj] then return end
+    table_insert(pendingQueue, obj)
+    if not isBatchProcessing then
+        processBatchQueue()
+    end
+end))
+
+local npcFolder = findFirstChild(workspace, "NPC")
 if npcFolder then
-    for _, npc in ipairs(npcFolder:GetChildren()) do
+    trackConnection(npcFolder.ChildAdded:Connect(function(npc)
+        task_wait(0.1)
         cleanNPC(npc)
-    end
-    npcFolder.ChildAdded:Connect(function(npc)
-        task.wait(0.1)
-        cleanNPC(npc)
-    end)
+    end))
 end
 
--- ===================================================================
--- 10. OPTIMASI KAPAL & KENDARAAN (VEHICLES)
--- ===================================================================
-local function cleanVehicle(veh)
-    if not veh then return end
-    for _, item in ipairs(veh:GetDescendants()) do
-        if item:IsA("ParticleEmitter") or item:IsA("Beam") or item:IsA("Trail") then
-            item.Enabled = false
-        elseif item:IsA("Sound") then
-            item.Volume = 0
-        elseif item:IsA("MeshPart") then
-            item.TextureID = ""
-            item.Material = Enum.Material.SmoothPlastic
-            item.CastShadow = false
-        elseif item:IsA("BasePart") then
-            item.Material = Enum.Material.SmoothPlastic
-            item.CastShadow = false
-        end
-    end
-end
-
-local vehFolder = workspace:FindFirstChild("Vehicles")
+local vehFolder = findFirstChild(workspace, "Vehicles")
 if vehFolder then
-    for _, v in ipairs(vehFolder:GetChildren()) do cleanVehicle(v) end
-    vehFolder.ChildAdded:Connect(function(v) task.wait(); cleanVehicle(v) end)
+    trackConnection(vehFolder.ChildAdded:Connect(function(v)
+        task_wait()
+        for _, item in ipairs(getDescendants(v)) do makePotato(item) end
+    end))
 end
 
-local boatStorage = workspace:FindFirstChild("Race Boat Storage")
-if boatStorage then
-    for _, b in ipairs(boatStorage:GetChildren()) do cleanVehicle(b) end
-    boatStorage.ChildAdded:Connect(function(b) task.wait(); cleanVehicle(b) end)
-end
-
--- ===================================================================
--- 11. OPTIMASI EFEK & AURA PET (PELIHARAAN)
--- ===================================================================
-local function cleanPetAuras()
-    local petSpawns = workspace:FindFirstChild("!!! PET SPAWN LOCATIONS")
-    if petSpawns then
-        for _, item in ipairs(petSpawns:GetDescendants()) do
-            if item:IsA("ParticleEmitter") or item:IsA("Beam") or item:IsA("Trail") or item:IsA("Highlight") then
-                item.Enabled = false
-            end
-        end
+-- [SOLUSI 3] Pembersih Sampah Otomatis (Periodic GC) untuk AFK 24 Jam di CloudPhone
+globalEnv._FishItGCWorker = task_spawn(function()
+    while true do
+        task_wait(180) -- Setiap 3 menit bersihkan sisa RAM Lua
+        pcall(function()
+            collectgarbage("collect")
+        end)
     end
-end
-cleanPetAuras()
-
--- ===================================================================
--- 12. MATIKAN SUARA AMBIENT
--- ===================================================================
-for _, s in ipairs(SoundService:GetDescendants()) do
-    if s:IsA("Sound") then s.Volume = 0 end
-end
-for _, s in ipairs(workspace:GetDescendants()) do
-    if s:IsA("Sound") then s.Volume = 0 end
-end
-
-print("=======================================================")
-print("✅ [FISH IT!] MODE ULTRA BURIK & OPTIMASI TOTAL AKTIF!")
-print("=======================================================")
+end)

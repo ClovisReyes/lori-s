@@ -239,8 +239,23 @@ local function fastPotatoLeaf(obj)
     end
 end
 
+local function purgeDestinationBeam(item)
+    if not item then return end
+    local name = item.Name
+    local lowerName = string_lower(name)
+    if string_find(lowerName, "destination", 1, true) or string_find(lowerName, "waypoint", 1, true) then
+        if isA(item, "Beam") then
+            item.Enabled = false
+            pcall(destroy, item)
+        elseif isA(item, "Attachment") or isA(item, "BillboardGui") or isA(item, "Highlight") or isA(item, "BasePart") then
+            pcall(destroy, item)
+        end
+    end
+end
+
 local function makePotato(obj)
     if not obj or processedCache[obj] then return end
+    purgeDestinationBeam(obj)
     if isProtectedInstance(obj) then return end
     fastPotatoLeaf(obj)
 end
@@ -300,7 +315,7 @@ local function processCharItem(item)
     elseif isA(item, "Decal") then
         pcall(destroy, item)
     elseif isA(item, "SpecialMesh") and item.Parent and item.Parent.Name == "Head" then
-        item.TextureId = EMPTY_STR
+        pcall(destroy, item)
     elseif isA(item, "ParticleEmitter") or isA(item, "Beam") or isA(item, "Trail") or isA(item, "Highlight") or isA(item, "Light") or isA(item, "Fire") or isA(item, "Smoke") then
         item.Enabled = false
     elseif isA(item, "BasePart") then
@@ -448,6 +463,12 @@ globalEnv._FishItActiveWorker = task_spawn(function()
     end
     task_wait()
 
+    if terrain then
+        for _, v in ipairs(getDescendants(terrain)) do
+            purgeDestinationBeam(v)
+        end
+    end
+
     local sounds = getDescendants(SoundService)
     runAdaptiveBatch(sounds, function(s)
         if isA(s, "Sound") then s.Volume = 0 end
@@ -512,11 +533,16 @@ end
 
 trackConnection(workspace.DescendantAdded:Connect(function(obj)
     if not obj or processedCache[obj] then return end
+    purgeDestinationBeam(obj)
     table_insert(pendingQueue, obj)
     if not isBatchProcessing then
         processBatchQueue()
     end
 end))
+
+if terrain then
+    trackConnection(terrain.DescendantAdded:Connect(purgeDestinationBeam))
+end
 
 local npcFolder = findFirstChild(workspace, "NPC")
 if npcFolder then

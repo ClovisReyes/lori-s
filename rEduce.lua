@@ -325,7 +325,7 @@ local function isProtected(obj)
     if name == "terrain" or name == "camera" then return true end
     if isBoothDescendant(obj) then return true end
     if isFishingLine(obj) then return true end
-    if string_find(name, "bobber", 1, true) then
+    if string_find(name, "bobber", 1, true) or string_find(name, "rod", 1, true) then
         cleanFishingEffects(obj)
         return true
     end
@@ -464,6 +464,10 @@ local function optimizeCharacter(char, player)
     end
 end
 
+if LocalPlayer.Character then
+    optimizeCharacter(LocalPlayer.Character, LocalPlayer)
+end
+
 local function cleanNPC(npc)
     if not npc or not isA(npc, "Model") or processedCache[npc] then return end
     processedCache[npc] = true
@@ -555,8 +559,6 @@ local function runAdaptiveBatch(items, handler)
 end
 
 globalEnv._FishItActiveWorker = task_spawn(function()
-    if LocalPlayer.Character then optimizeCharacter(LocalPlayer.Character, LocalPlayer) end
-
     for _, p in ipairs(Players:GetPlayers()) do
         trackOtherPlayer(p)
     end
@@ -579,25 +581,6 @@ globalEnv._FishItActiveWorker = task_spawn(function()
     end
 
     local mapDescendants = getDescendants(workspace)
-    for _, item in ipairs(mapDescendants) do
-        if isA(item, "Clouds") then
-            item.Enabled = false
-            item.Cover = 0
-            item.Density = 0
-            pcall(destroy, item)
-        else
-            local lowerName = string_lower(item.Name)
-            if string_find(lowerName, "booth", 1, true) then
-                boothCache[item] = true
-                for _, desc in ipairs(getDescendants(item)) do
-                    boothCache[desc] = true
-                end
-            elseif string_find(lowerName, "bobber", 1, true) or string_find(lowerName, "rod", 1, true) then
-                cleanFishingEffects(item)
-            end
-        end
-    end
-
     runAdaptiveBatch(mapDescendants, makePotato)
 
     local sounds = getDescendants(SoundService)

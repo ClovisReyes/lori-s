@@ -94,8 +94,8 @@ local Enum = Enum
 local MATERIAL_SMOOTH_PLASTIC = Enum.Material.SmoothPlastic
 local QUALITY_LEVEL_01 = Enum.QualityLevel.Level01
 
-local COLOR_AMBIENT_BRIGHT = Color3_fromRGB(185, 185, 185)
-local COLOR_FOG_COMFORT    = Color3_fromRGB(185, 185, 185)
+local COLOR_AMBIENT_BRIGHT = Color3_fromRGB(200, 200, 200)
+local COLOR_FOG_COMFORT    = Color3_fromRGB(200, 200, 200)
 local COLOR_WATER_BLUE     = Color3_fromRGB(65, 165, 230)
 local EMPTY_STR            = ""
 
@@ -105,14 +105,20 @@ local processedCache = setmetatable({}, { __mode = "k" })
 local boothCache     = setmetatable({}, { __mode = "k" })
 
 local SAFE_TO_DESTROY = {
-    ["Group Fishing Visuals"] = true,
-    ["CosmeticFolder"]        = true,
-    ["Aquariums"]             = true,
-    ["!!! Aquariums"]         = true,
-    ["Radiant"]               = true,
-    ["Divine"]                = true,
-    ["FloorBeam"]             = true,
-    ["DestinationBeam"]       = true,
+    ["Group Fishing Visuals"]  = true,
+    ["CosmeticFolder"]         = true,
+    ["Aquariums"]              = true,
+    ["!!! Aquariums"]          = true,
+    ["Radiant"]                = true,
+    ["Divine"]                 = true,
+    ["FloorBeam"]              = true,
+    ["DestinationBeam"]        = true,
+    ["VFX"]                    = true,
+    ["Wave"]                   = true,
+    ["Waves"]                  = true,
+    ["Perfect Area Highlight"] = true,
+    ["AreaHighlight"]          = true,
+    ["Border"]                 = true,
 }
 
 local INVISIBLE_RIG_EXACT = {
@@ -186,6 +192,45 @@ local function disablePostEffect(item)
             item.Density = 0
             item.Enabled = false
         end)
+    elseif isA(item, "BloomEffect") then
+        pcall(function()
+            item.Intensity = 0
+            item.Size = 0
+            item.Threshold = 2
+            item.Enabled = false
+            trackConnection(item:GetPropertyChangedSignal("Enabled"):Connect(function()
+                if item.Enabled then item.Enabled = false end
+            end))
+        end)
+    elseif isA(item, "ColorCorrectionEffect") then
+        pcall(function()
+            item.TintColor = Color3_fromRGB(255, 255, 255)
+            item.Contrast = 0
+            item.Saturation = 0
+            item.Brightness = 0
+            item.Enabled = false
+            trackConnection(item:GetPropertyChangedSignal("Enabled"):Connect(function()
+                if item.Enabled then item.Enabled = false end
+            end))
+        end)
+    elseif isA(item, "SunRaysEffect") then
+        pcall(function()
+            item.Intensity = 0
+            item.Spread = 0
+            item.Enabled = false
+            trackConnection(item:GetPropertyChangedSignal("Enabled"):Connect(function()
+                if item.Enabled then item.Enabled = false end
+            end))
+        end)
+    elseif isA(item, "DepthOfFieldEffect") then
+        pcall(function()
+            item.FarIntensity = 0
+            item.NearIntensity = 0
+            item.Enabled = false
+            trackConnection(item:GetPropertyChangedSignal("Enabled"):Connect(function()
+                if item.Enabled then item.Enabled = false end
+            end))
+        end)
     elseif isA(item, "PostEffect") then
         pcall(function()
             if item.Enabled then item.Enabled = false end
@@ -202,15 +247,27 @@ for _, item in ipairs(getChildren(Lighting)) do
     disablePostEffect(item)
 end
 
+local lightingProfiles = findFirstChild(Lighting, "LightingProfiles")
+if lightingProfiles then
+    for _, item in ipairs(getDescendants(lightingProfiles)) do
+        disablePostEffect(item)
+    end
+    trackConnection(lightingProfiles.DescendantAdded:Connect(disablePostEffect))
+end
+
 pcall(function()
     if MaterialService then
         pcall(function() MaterialService.Use2022Materials = false end)
+        if sethiddenproperty then
+            pcall(function() sethiddenproperty(MaterialService, "Use2022Materials", false) end)
+        end
         for _, item in ipairs(getDescendants(MaterialService)) do
             if isA(item, "MaterialVariant") then
                 pcall(function() item.ColorMap = EMPTY_STR end)
                 pcall(function() item.NormalMap = EMPTY_STR end)
                 pcall(function() item.RoughnessMap = EMPTY_STR end)
                 pcall(function() item.MetalnessMap = EMPTY_STR end)
+                pcall(destroy, item)
             end
         end
     end
@@ -248,7 +305,7 @@ local function applyFullbright()
 
     Lighting.ClockTime = 14
     Lighting.TimeOfDay = "14:00:00"
-    Lighting.Brightness = 2
+    Lighting.Brightness = 0
     Lighting.GlobalShadows = false
     Lighting.Ambient = COLOR_AMBIENT_BRIGHT
     Lighting.OutdoorAmbient = COLOR_AMBIENT_BRIGHT
@@ -259,7 +316,7 @@ local function applyFullbright()
     Lighting.FogColor = COLOR_FOG_COMFORT
     Lighting.EnvironmentDiffuseScale = 0
     Lighting.EnvironmentSpecularScale = 0
-    Lighting.ExposureCompensation = 0.25
+    Lighting.ExposureCompensation = 0.35
 end
 
 applyFullbright()
@@ -267,7 +324,7 @@ applyFullbright()
 globalEnv._FishItLightingWorker = task_spawn(function()
     while true do
         task_wait(0.2)
-        if Lighting.ClockTime ~= 14 or Lighting.Brightness ~= 2 or Lighting.Ambient ~= COLOR_AMBIENT_BRIGHT or Lighting.ExposureCompensation ~= 0.25 or Lighting.EnvironmentSpecularScale ~= 0 or Lighting.GlobalShadows ~= false then
+        if Lighting.ClockTime ~= 14 or Lighting.Brightness ~= 0 or Lighting.Ambient ~= COLOR_AMBIENT_BRIGHT or Lighting.ExposureCompensation ~= 0.35 or Lighting.EnvironmentSpecularScale ~= 0 or Lighting.GlobalShadows ~= false then
             pcall(applyFullbright)
         end
     end
@@ -422,6 +479,14 @@ local function makePotato(obj)
     if isProtected(obj) then return end
     processedCache[obj] = true
 
+    local name = obj.Name
+    if not isBoothDescendant(obj) then
+        if SAFE_TO_DESTROY[name] or name == "VFX" or name == "Wave" or name == "Waves" or name == "FloorBeam" or name == "DestinationBeam" or name == "Perfect Area Highlight" then
+            pcall(destroy, obj)
+            return
+        end
+    end
+
     if isA(obj, "BasePart") then
         pcall(function()
             obj.Material = MATERIAL_SMOOTH_PLASTIC
@@ -436,6 +501,8 @@ local function makePotato(obj)
         end
         for _, child in ipairs(getChildren(obj)) do
             if isA(child, "SurfaceAppearance") or isA(child, "Decal") or isA(child, "Texture") then
+                pcall(destroy, child)
+            elseif isA(child, "Beam") or isA(child, "ParticleEmitter") or isA(child, "Trail") or isA(child, "Highlight") then
                 pcall(destroy, child)
             end
         end
@@ -676,6 +743,14 @@ globalEnv._FishItActiveWorker = task_spawn(function()
         trackOtherPlayer(p)
     end
 
+    local islandsFolder = findFirstChild(workspace, "Islands")
+    if islandsFolder then
+        for _, isl in ipairs(getChildren(islandsFolder)) do
+            local vfx = findFirstChild(isl, "VFX")
+            if vfx then pcall(destroy, vfx) end
+        end
+    end
+
     local mapDescendants = getDescendants(workspace)
     for _, item in ipairs(mapDescendants) do
         local n = item.Name
@@ -761,8 +836,12 @@ trackConnection(workspace.DescendantAdded:Connect(function(obj)
         return
     end
     if isBoothDescendant(obj) then return end
-    purgeDestinationBeam(obj)
-    local n = string_lower(obj.Name)
+    local name = obj.Name
+    if SAFE_TO_DESTROY[name] or name == "VFX" or name == "Wave" or name == "Waves" or name == "FloorBeam" or name == "DestinationBeam" or name == "Perfect Area Highlight" then
+        pcall(destroy, obj)
+        return
+    end
+    local n = string_lower(name)
     if string_find(n, "bobber", 1, true) or string_find(n, "rod", 1, true) then
         cleanFishingEffects(obj)
         for _, d in ipairs(getDescendants(obj)) do

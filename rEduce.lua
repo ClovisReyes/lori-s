@@ -94,8 +94,8 @@ local Enum = Enum
 local MATERIAL_SMOOTH_PLASTIC = Enum.Material.SmoothPlastic
 local QUALITY_LEVEL_01 = Enum.QualityLevel.Level01
 
-local COLOR_AMBIENT_BRIGHT = Color3_fromRGB(178, 178, 178)
-local COLOR_FOG_COMFORT    = Color3_fromRGB(200, 200, 200)
+local COLOR_AMBIENT_BRIGHT = Color3_fromRGB(185, 185, 185)
+local COLOR_FOG_COMFORT    = Color3_fromRGB(185, 185, 185)
 local COLOR_WATER_BLUE     = Color3_fromRGB(65, 165, 230)
 local EMPTY_STR            = ""
 
@@ -111,11 +111,15 @@ local SAFE_TO_DESTROY = {
     ["!!! Aquariums"]         = true,
     ["Radiant"]               = true,
     ["Divine"]                = true,
+    ["!!! FISHDISPLAYER"]     = true,
+    ["FloorBeam"]             = true,
+    ["DestinationBeam"]       = true,
 }
 
 local INVISIBLE_RIG_EXACT = {
     ["EmoteCratePreviewRig"] = true,
     ["FakeRig1"]             = true,
+    ["LimitedRig1"]          = true,
     ["Props"]                = true,
     ["Sunken Wreckage"]      = true,
     ["FakeIslands"]          = true,
@@ -141,6 +145,9 @@ local PROMO_GUIS = {
     ["GalaxyEvent"]            = true,
     ["PurchaseScreenBlackout"] = true,
     ["EggIndicator"]           = true,
+    ["!!!! RewardProgress"]    = true,
+    ["ElementalGatcha"]        = true,
+    ["!!! Update Log"]         = true,
 }
 
 pcall(function()
@@ -168,32 +175,43 @@ if not cleanSky then
 end
 globalEnv._FishItCleanSky = cleanSky
 
-local function disablePostEffect(item)
-    if not item or item == cleanSky or processedCache[item] then return end
-    processedCache[item] = true
-    if isA(item, "PostEffect") or isA(item, "Atmosphere") or isA(item, "Clouds") then
+local function purgeEffect(item)
+    if not item or item == cleanSky then return end
+    if isA(item, "PostEffect") or isA(item, "Atmosphere") or isA(item, "Clouds") or (isA(item, "Sky") and item ~= cleanSky) then
         pcall(function()
-            if item.Enabled then item.Enabled = false end
-            trackConnection(item:GetPropertyChangedSignal("Enabled"):Connect(function()
-                if item.Enabled then item.Enabled = false end
-            end))
+            if isA(item, "Atmosphere") then
+                item.Density = 0
+                item.Haze = 0
+                item.Glare = 0
+            elseif isA(item, "Clouds") then
+                item.Cover = 0
+                item.Density = 0
+            end
         end)
-    elseif isA(item, "Sky") and item ~= cleanSky then
         pcall(destroy, item)
     end
 end
 
-for _, item in ipairs(getChildren(Lighting)) do
-    disablePostEffect(item)
+for _, item in ipairs(getDescendants(Lighting)) do
+    purgeEffect(item)
+end
+
+local function cleanMaterialVariant(item)
+    if isA(item, "MaterialVariant") then
+        pcall(function() item.ColorMap = EMPTY_STR end)
+        pcall(function() item.NormalMap = EMPTY_STR end)
+        pcall(function() item.RoughnessMap = EMPTY_STR end)
+        pcall(function() item.MetalnessMap = EMPTY_STR end)
+        pcall(destroy, item)
+    end
 end
 
 if MaterialService then
     pcall(function() MaterialService.Use2022Materials = false end)
-    for _, item in ipairs(getChildren(MaterialService)) do
-        if isA(item, "MaterialVariant") then
-            pcall(destroy, item)
-        end
+    for _, item in ipairs(getDescendants(MaterialService)) do
+        cleanMaterialVariant(item)
     end
+    trackConnection(MaterialService.DescendantAdded:Connect(cleanMaterialVariant))
 end
 
 local function applyFullbright()
@@ -203,7 +221,7 @@ local function applyFullbright()
     if cleanSky and cleanSky.MoonAngularSize ~= 0 then cleanSky.MoonAngularSize = 0 end
     Lighting.ClockTime = 14
     Lighting.TimeOfDay = "14:00:00"
-    Lighting.Brightness = 1
+    Lighting.Brightness = 2
     Lighting.GlobalShadows = false
     Lighting.Ambient = COLOR_AMBIENT_BRIGHT
     Lighting.OutdoorAmbient = COLOR_AMBIENT_BRIGHT
@@ -214,7 +232,7 @@ local function applyFullbright()
     Lighting.FogColor = COLOR_FOG_COMFORT
     Lighting.EnvironmentDiffuseScale = 0
     Lighting.EnvironmentSpecularScale = 0
-    Lighting.ExposureCompensation = 0
+    Lighting.ExposureCompensation = 0.25
 end
 
 applyFullbright()
@@ -227,38 +245,32 @@ local function enforceFullbright()
     isEnforcingLighting = false
 end
 
-trackConnection(Lighting.Changed:Connect(function(prop)
+trackConnection(Lighting.Changed:Connect(function()
     if isEnforcingLighting then return end
-    if prop == "ClockTime" or prop == "TimeOfDay" or prop == "Ambient" or prop == "OutdoorAmbient" or prop == "Brightness" or prop == "FogEnd" or prop == "FogColor" or prop == "GlobalShadows" or prop == "EnvironmentSpecularScale" or prop == "ExposureCompensation" then
+    if Lighting.ClockTime ~= 14 or Lighting.Brightness ~= 2 or Lighting.Ambient ~= COLOR_AMBIENT_BRIGHT or Lighting.ExposureCompensation ~= 0.25 or Lighting.EnvironmentSpecularScale ~= 0 or Lighting.GlobalShadows ~= false then
         enforceFullbright()
     end
 end))
 
 globalEnv._FishItLightingWorker = task_spawn(function()
     while true do
-        task_wait(3)
-        if Lighting.ClockTime ~= 14 or Lighting.Brightness ~= 1 or Lighting.GlobalShadows ~= false or Lighting.Ambient ~= COLOR_AMBIENT_BRIGHT or Lighting.ExposureCompensation ~= 0 then
+        task_wait(0.1)
+        if Lighting.ClockTime ~= 14 or Lighting.Brightness ~= 2 or Lighting.Ambient ~= COLOR_AMBIENT_BRIGHT or Lighting.ExposureCompensation ~= 0.25 or Lighting.EnvironmentSpecularScale ~= 0 or Lighting.GlobalShadows ~= false then
             enforceFullbright()
         end
     end
 end)
 
-trackConnection(Lighting.ChildAdded:Connect(function(item)
-    if isA(item, "Sky") and item ~= cleanSky then
-        pcall(destroy, item)
-    else
-        disablePostEffect(item)
-    end
-end))
+trackConnection(Lighting.DescendantAdded:Connect(purgeEffect))
 
 local camConn
 local function secureCamera(cam)
     if not cam then return end
     if camConn and camConn.Connected then pcall(camConn.Disconnect, camConn) end
     for _, item in ipairs(getChildren(cam)) do
-        disablePostEffect(item)
+        purgeEffect(item)
     end
-    camConn = cam.ChildAdded:Connect(disablePostEffect)
+    camConn = cam.ChildAdded:Connect(purgeEffect)
     trackConnection(camConn)
 end
 
@@ -266,6 +278,14 @@ secureCamera(workspace.CurrentCamera)
 trackConnection(workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
     secureCamera(workspace.CurrentCamera)
 end))
+
+local function purgeDestinationBeam(item)
+    if not item or isBoothDescendant(item) then return end
+    local name = item.Name
+    if string_find(name, "Destination") or string_find(name, "Waypoint") or string_find(name, "FloorBeam") or string_find(name, "destination") or string_find(name, "waypoint") or string_find(name, "floorbeam") or name == "Wave" or name == "Waves" or name == "AreaHighlight" then
+        pcall(destroy, item)
+    end
+end
 
 local terrain = workspace.Terrain
 if terrain then
@@ -278,21 +298,25 @@ if terrain then
         pcall(function() sethiddenproperty(terrain, "Decoration", false) end)
     end
 
-    local function purgeClouds(item)
+    local function purgeTerrainChild(item)
         if isA(item, "Clouds") then
-            item.Enabled = false
-            pcall(function()
-                item.Cover = 0
-                item.Density = 0
-            end)
-            pcall(destroy, item)
+            purgeEffect(item)
+        elseif isA(item, "BasePart") then
+            if not processedCache[item] then
+                processedCache[item] = true
+                item.Material = MATERIAL_SMOOTH_PLASTIC
+                item.CastShadow = false
+                item.Reflectance = 0
+                if isA(item, "MeshPart") then item.TextureID = EMPTY_STR end
+            end
+            purgeDestinationBeam(item)
         end
     end
 
     for _, item in ipairs(getChildren(terrain)) do
-        purgeClouds(item)
+        purgeTerrainChild(item)
     end
-    trackConnection(terrain.ChildAdded:Connect(purgeClouds))
+    trackConnection(terrain.ChildAdded:Connect(purgeTerrainChild))
 end
 
 local function isBoothDescendant(obj)
@@ -352,6 +376,13 @@ local function cleanFishingEffects(item)
         item.Material = MATERIAL_SMOOTH_PLASTIC
         item.CastShadow = false
         item.Reflectance = 0
+        pcall(function()
+            if item.MaterialVariant ~= EMPTY_STR then
+                item.MaterialVariant = EMPTY_STR
+            end
+        end)
+        local sa = findFirstChildOfClass(item, "SurfaceAppearance")
+        if sa then pcall(destroy, sa) end
         local n = string_lower(item.Name)
         if string_find(n, "vfx", 1, true) or string_find(n, "effect", 1, true) or string_find(n, "aura", 1, true) or string_find(n, "glow", 1, true) or string_find(n, "lightning", 1, true) or string_find(n, "electricity", 1, true) or string_find(n, "spark", 1, true) or string_find(n, "energy", 1, true) then
             item.Transparency = 1
@@ -374,16 +405,6 @@ local function isProtected(obj)
     return false
 end
 
-local function purgeDestinationBeam(item)
-    if not item or isBoothDescendant(item) then return end
-    local name = item.Name
-    if string_find(name, "Destination") or string_find(name, "Waypoint") or string_find(name, "destination") or string_find(name, "waypoint") then
-        if isA(item, "Beam") or isA(item, "Attachment") or isA(item, "BillboardGui") or isA(item, "Highlight") or isA(item, "BasePart") then
-            pcall(destroy, item)
-        end
-    end
-end
-
 local function makePotato(obj)
     if not obj or processedCache[obj] then return end
     if isProtected(obj) then return end
@@ -393,8 +414,24 @@ local function makePotato(obj)
         obj.Material = MATERIAL_SMOOTH_PLASTIC
         obj.CastShadow = false
         obj.Reflectance = 0
+        pcall(function()
+            if obj.MaterialVariant ~= EMPTY_STR then
+                obj.MaterialVariant = EMPTY_STR
+            end
+        end)
         if isA(obj, "MeshPart") then
             obj.TextureID = EMPTY_STR
+        end
+        local sa = findFirstChildOfClass(obj, "SurfaceAppearance")
+        if sa then pcall(destroy, sa) end
+        for _, child in ipairs(getChildren(obj)) do
+            if isA(child, "Decal") or isA(child, "Texture") or isA(child, "SurfaceAppearance") then
+                pcall(destroy, child)
+            elseif isA(child, "ParticleEmitter") or isA(child, "Beam") or isA(child, "Trail") or isA(child, "Highlight") then
+                pcall(destroy, child)
+            elseif isA(child, "Light") then
+                pcall(destroy, child)
+            end
         end
     elseif isA(obj, "Decal") or isA(obj, "Texture") then
         obj.Transparency = 1
@@ -402,9 +439,9 @@ local function makePotato(obj)
     elseif isA(obj, "SpecialMesh") then
         obj.TextureId = EMPTY_STR
     elseif isA(obj, "ParticleEmitter") or isA(obj, "Beam") or isA(obj, "Trail") or isA(obj, "Highlight") then
-        obj.Enabled = false
+        pcall(destroy, obj)
     elseif isA(obj, "PointLight") or isA(obj, "SpotLight") or isA(obj, "SurfaceLight") then
-        obj.Enabled = false
+        pcall(destroy, obj)
     elseif isA(obj, "SurfaceAppearance") then
         pcall(destroy, obj)
     elseif isA(obj, "BillboardGui") or isA(obj, "SurfaceGui") then
@@ -423,7 +460,7 @@ local function handleWeatherInstance(inst)
                 child.Transparency = 1
                 child.CastShadow = false
             elseif isA(child, "ParticleEmitter") or isA(child, "Beam") or isA(child, "PostEffect") then
-                child.Enabled = false
+                pcall(destroy, child)
             end
         end
     end
@@ -452,7 +489,7 @@ local function makeModelInvisible(model)
                 end
             end
         elseif isA(item, "ParticleEmitter") or isA(item, "Beam") or isA(item, "Trail") or isA(item, "Highlight") or isA(item, "Light") then
-            item.Enabled = false
+            pcall(destroy, item)
         end
     end
 end
@@ -473,6 +510,13 @@ local function processCharItem(item)
         item.Material = MATERIAL_SMOOTH_PLASTIC
         item.CastShadow = false
         item.Reflectance = 0
+        pcall(function()
+            if item.MaterialVariant ~= EMPTY_STR then
+                item.MaterialVariant = EMPTY_STR
+            end
+        end)
+        local sa = findFirstChildOfClass(item, "SurfaceAppearance")
+        if sa then pcall(destroy, sa) end
     end
 end
 
@@ -513,7 +557,7 @@ local function cleanNPC(npc)
 
     for _, item in ipairs(getDescendants(npc)) do
         if not isA(item, "ProximityPrompt") and not isA(item, "BillboardGui") then
-            if isA(item, "Accessory") or isA(item, "Shirt") or isA(item, "Pants") or isA(item, "ShirtGraphic") or isA(item, "CharacterMesh") or isA(item, "Decal") then
+            if isA(item, "Accessory") or isA(item, "Shirt") or isA(item, "Pants") or isA(item, "ShirtGraphic") or isA(item, "CharacterMesh") or isA(item, "Decal") or isA(item, "SurfaceAppearance") then
                 pcall(destroy, item)
             elseif isA(item, "SpecialMesh") and item.Parent and item.Parent.Name == "Head" then
                 item.TextureId = EMPTY_STR
@@ -521,11 +565,25 @@ local function cleanNPC(npc)
                 item.TextureID = EMPTY_STR
                 item.Material = MATERIAL_SMOOTH_PLASTIC
                 item.CastShadow = false
+                pcall(function()
+                    if item.MaterialVariant ~= EMPTY_STR then
+                        item.MaterialVariant = EMPTY_STR
+                    end
+                end)
+                local sa = findFirstChildOfClass(item, "SurfaceAppearance")
+                if sa then pcall(destroy, sa) end
             elseif isA(item, "BasePart") then
                 item.Material = MATERIAL_SMOOTH_PLASTIC
                 item.CastShadow = false
-            elseif isA(item, "ParticleEmitter") or isA(item, "Beam") or isA(item, "Trail") or isA(item, "Highlight") then
-                item.Enabled = false
+                pcall(function()
+                    if item.MaterialVariant ~= EMPTY_STR then
+                        item.MaterialVariant = EMPTY_STR
+                    end
+                end)
+                local sa = findFirstChildOfClass(item, "SurfaceAppearance")
+                if sa then pcall(destroy, sa) end
+            elseif isA(item, "ParticleEmitter") or isA(item, "Beam") or isA(item, "Trail") or isA(item, "Highlight") or isA(item, "Light") then
+                pcall(destroy, item)
             end
         end
     end
@@ -570,6 +628,19 @@ if backpack then
         cleanFishingEffects(item)
     end
     trackConnection(backpack.DescendantAdded:Connect(cleanFishingEffects))
+end
+
+local charsFolder = findFirstChild(workspace, "Characters")
+if charsFolder then
+    for _, c in ipairs(getChildren(charsFolder)) do
+        local p = getPlayerFromCharacter(Players, c)
+        optimizeCharacter(c, p)
+    end
+    trackConnection(charsFolder.ChildAdded:Connect(function(c)
+        task_wait(0.05)
+        local p = getPlayerFromCharacter(Players, c)
+        optimizeCharacter(c, p)
+    end))
 end
 
 local function runAdaptiveBatch(items, handler)
@@ -623,6 +694,25 @@ globalEnv._FishItActiveWorker = task_spawn(function()
         end
     end
 
+    local islandsFolder = findFirstChild(workspace, "Islands")
+    if islandsFolder then
+        for _, island in ipairs(getChildren(islandsFolder)) do
+            local vfx = findFirstChild(island, "VFX")
+            if vfx then pcall(destroy, vfx) end
+        end
+    end
+
+    local worldSetup = findFirstChild(workspace, "WorldSetup")
+    if worldSetup then
+        local fishDisplayer = findFirstChild(worldSetup, "!!! FISHDISPLAYER")
+        if fishDisplayer then pcall(destroy, fishDisplayer) end
+        local menuRings = findFirstChild(worldSetup, "Menu Rings")
+        if menuRings then
+            local pah = findFirstChild(menuRings, "Perfect Area Highlight")
+            if pah then pcall(destroy, pah) end
+        end
+    end
+
     local npcFolder = findFirstChild(workspace, "NPC")
     if npcFolder then
         runAdaptiveBatch(getChildren(npcFolder), cleanNPC)
@@ -668,13 +758,8 @@ end)
 
 trackConnection(workspace.DescendantAdded:Connect(function(obj)
     if not obj or processedCache[obj] then return end
-    if isA(obj, "Clouds") then
-        obj.Enabled = false
-        pcall(function()
-            obj.Cover = 0
-            obj.Density = 0
-        end)
-        pcall(destroy, obj)
+    if isA(obj, "Clouds") or isA(obj, "Atmosphere") or isA(obj, "PostEffect") or isA(obj, "Sky") then
+        purgeEffect(obj)
         return
     end
     if isBoothDescendant(obj) then return end
@@ -687,8 +772,6 @@ trackConnection(workspace.DescendantAdded:Connect(function(obj)
         end
         return
     end
-    task_wait()
-    if isBoothDescendant(obj) then return end
     makePotato(obj)
 end))
 

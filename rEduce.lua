@@ -1,6 +1,6 @@
-if rconsoleclear then pcall(rconsoleclear) elseif consoleclear then pcall(consoleclear) end
+if rconsoleclear then rconsoleclear() end
 
-local globalEnv = (getgenv and getgenv()) or _G
+local globalEnv = getgenv()
 
 if globalEnv._FishItActiveWorker and typeof(globalEnv._FishItActiveWorker) == "thread" then
     pcall(task.cancel, globalEnv._FishItActiveWorker)
@@ -49,10 +49,6 @@ local SoundService = getService(game, "SoundService")
 local MaterialService = getService(game, "MaterialService")
 
 local LocalPlayer = Players.LocalPlayer
-if not LocalPlayer then
-    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-    LocalPlayer = Players.LocalPlayer
-end
 
 local isA = game.IsA
 local findFirstChild = game.FindFirstChild
@@ -60,7 +56,6 @@ local findFirstChildOfClass = game.FindFirstChildOfClass
 local getChildren = game.GetChildren
 local getDescendants = game.GetDescendants
 local destroy = game.Destroy
-local waitForChild = game.WaitForChild
 local getPlayerFromCharacter = Players.GetPlayerFromCharacter
 
 local ipairs = ipairs
@@ -79,6 +74,7 @@ local task_wait = task.wait
 local task_spawn = task.spawn
 
 local Color3_fromRGB = Color3.fromRGB
+local Instance_new = Instance.new
 local Enum = Enum
 local MATERIAL_SMOOTH_PLASTIC = Enum.Material.SmoothPlastic
 local QUALITY_LEVEL_01 = Enum.QualityLevel.Level01
@@ -90,6 +86,7 @@ local EMPTY_STR            = ""
 local FRAME_BUDGET_SEC = 0.003
 
 local processedCache = setmetatable({}, { __mode = "k" })
+local boothCache     = setmetatable({}, { __mode = "k" })
 
 local SAFE_TO_DESTROY = {
     ["Group Fishing Visuals"] = true,
@@ -130,22 +127,37 @@ local PROMO_GUIS = {
     ["EggIndicator"]           = true,
 }
 
-pcall(function()
-    settings().Rendering.QualityLevel = QUALITY_LEVEL_01
-    workspace.InterpolationThrottling = Enum.InterpolationThrottlingMode.Enabled
-end)
+settings().Rendering.QualityLevel = QUALITY_LEVEL_01
+workspace.InterpolationThrottling = Enum.InterpolationThrottlingMode.Enabled
+
+local cleanSky = findFirstChild(Lighting, "CleanSky")
+if not cleanSky then
+    cleanSky = Instance_new("Sky")
+    cleanSky.Name = "CleanSky"
+    cleanSky.CelestialBodiesShown = false
+    cleanSky.SunAngularSize = 0
+    cleanSky.MoonAngularSize = 0
+    cleanSky.StarCount = 0
+    cleanSky.SkyboxBk = EMPTY_STR
+    cleanSky.SkyboxDn = EMPTY_STR
+    cleanSky.SkyboxFt = EMPTY_STR
+    cleanSky.SkyboxLf = EMPTY_STR
+    cleanSky.SkyboxRt = EMPTY_STR
+    cleanSky.SkyboxUp = EMPTY_STR
+    cleanSky.Parent = Lighting
+end
 
 local function disablePostEffect(item)
     if not item or processedCache[item] then return end
     processedCache[item] = true
-    if isA(item, "PostEffect") or isA(item, "Atmosphere") or isA(item, "Clouds") then
-        pcall(function()
+    if isA(item, "PostEffect") or isA(item, "Atmosphere") then
+        item.Enabled = false
+        trackConnection(item:GetPropertyChangedSignal("Enabled"):Connect(function()
             if item.Enabled then item.Enabled = false end
-            trackConnection(item:GetPropertyChangedSignal("Enabled"):Connect(function()
-                if item.Enabled then item.Enabled = false end
-            end))
-        end)
-    elseif isA(item, "Sky") then
+        end))
+    elseif isA(item, "Clouds") then
+        pcall(destroy, item)
+    elseif isA(item, "Sky") and item.Name ~= "CleanSky" then
         pcall(destroy, item)
     end
 end
@@ -154,12 +166,10 @@ for _, item in ipairs(getChildren(Lighting)) do
     disablePostEffect(item)
 end
 
-if MaterialService then
-    pcall(function() MaterialService.Use2022Materials = false end)
-    for _, item in ipairs(getChildren(MaterialService)) do
-        if isA(item, "MaterialVariant") then
-            pcall(destroy, item)
-        end
+MaterialService.Use2022Materials = false
+for _, item in ipairs(getChildren(MaterialService)) do
+    if isA(item, "MaterialVariant") then
+        pcall(destroy, item)
     end
 end
 
@@ -210,36 +220,104 @@ trackConnection(workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(func
 end))
 
 local terrain = workspace.Terrain
-if terrain then
-    terrain.WaterWaveSize = 0
-    terrain.WaterWaveSpeed = 0
-    terrain.WaterReflectance = 0
-    terrain.WaterTransparency = 0.9
-    terrain.WaterColor = COLOR_WATER_BLUE
-    if sethiddenproperty then
-        pcall(function() sethiddenproperty(terrain, "Decoration", false) end)
+terrain.WaterWaveSize = 0
+terrain.WaterWaveSpeed = 0
+terrain.WaterReflectance = 0
+terrain.WaterTransparency = 0.9
+terrain.WaterColor = COLOR_WATER_BLUE
+if sethiddenproperty then
+    pcall(sethiddenproperty, terrain, "Decoration", false)
+end
+
+local function purgeClouds(item)
+    if isA(item, "Clouds") then
+        pcall(destroy, item)
+    end
+end
+
+for _, item in ipairs(getChildren(terrain)) do
+    purgeClouds(item)
+end
+trackConnection(terrain.ChildAdded:Connect(purgeClouds))
+
+local function isBoothDescendant(obj)
+    if not obj or obj == workspace then return false end
+    if boothCache[obj] ~= nil then
+        return boothCache[obj]
+    end
+
+    local cur = obj
+    while cur and cur ~= workspace do
+        if boothCache[cur] ~= nil then
+            boothCache[obj] = boothCache[cur]
+            return boothCache[cur]
+        end
+        if string_find(string_lower(cur.Name), "booth", 1, true) then
+            boothCache[cur] = true
+            boothCache[obj] = true
+            return true
+        end
+        cur = cur.Parent
+    end
+
+    boothCache[obj] = false
+    return false
+end
+
+local function isPlayerDescendant(obj)
+    if not obj or obj == workspace then return false end
+    local cur = obj
+    while cur and cur ~= workspace do
+        if cur == LocalPlayer.Character then return true end
+        if isA(cur, "Model") and getPlayerFromCharacter(Players, cur) then return true end
+        cur = cur.Parent
+    end
+    return false
+end
+
+local function isFishingLine(item)
+    if not item then return false end
+    local n = string_lower(item.Name)
+    return string_find(n, "line", 1, true) ~= nil or n == "rope"
+end
+
+local function cleanFishingEffects(item)
+    if not item then return end
+    if isBoothDescendant(item) then return end
+    if isFishingLine(item) then return end
+
+    if isA(item, "ParticleEmitter") or isA(item, "Highlight") or isA(item, "Light") or isA(item, "Trail") or isA(item, "Fire") or isA(item, "Smoke") or isA(item, "Beam") then
+        pcall(destroy, item)
+    elseif isA(item, "BasePart") then
+        item.Material = MATERIAL_SMOOTH_PLASTIC
+        item.CastShadow = false
+        item.Reflectance = 0
+        local n = string_lower(item.Name)
+        if string_find(n, "vfx", 1, true) or string_find(n, "effect", 1, true) or string_find(n, "aura", 1, true) or string_find(n, "glow", 1, true) or string_find(n, "lightning", 1, true) or string_find(n, "electricity", 1, true) or string_find(n, "spark", 1, true) or string_find(n, "energy", 1, true) then
+            item.Transparency = 1
+            pcall(destroy, item)
+        end
     end
 end
 
 local function isProtected(obj)
     if not obj then return true end
-    local name = obj.Name
-    if name == "Terrain" or name == "Camera" then return true end
-    if name == "Bobber" or name == "FishingLine" then return true end
-    local parent = obj.Parent
-    if parent and parent ~= workspace then
-        if parent == LocalPlayer.Character then return true end
-        local pp = parent.Parent
-        if pp and pp == LocalPlayer.Character then return true end
-        if isA(parent, "Model") and getPlayerFromCharacter(Players, parent) then return true end
+    local name = string_lower(obj.Name)
+    if name == "terrain" or name == "camera" then return true end
+    if isBoothDescendant(obj) then return true end
+    if isFishingLine(obj) then return true end
+    if string_find(name, "bobber", 1, true) then
+        cleanFishingEffects(obj)
+        return true
     end
+    if isPlayerDescendant(obj) then return true end
     return false
 end
 
 local function purgeDestinationBeam(item)
-    if not item then return end
-    local name = item.Name
-    if string_find(name, "Destination") or string_find(name, "Waypoint") or string_find(name, "destination") or string_find(name, "waypoint") then
+    if not item or isBoothDescendant(item) then return end
+    local n = string_lower(item.Name)
+    if string_find(n, "destination", 1, true) or string_find(n, "waypoint", 1, true) then
         if isA(item, "Beam") or isA(item, "Attachment") or isA(item, "BillboardGui") or isA(item, "Highlight") or isA(item, "BasePart") then
             pcall(destroy, item)
         end
@@ -278,8 +356,8 @@ end
 
 local function handleWeatherInstance(inst)
     if not inst then return end
-    local name = inst.Name
-    if name == "Rain" or name == "Vynozen FogEffect" or string_find(name, "Rain") or string_find(name, "Fog") or string_find(name, "rain") or string_find(name, "fog") then
+    local n = string_lower(inst.Name)
+    if string_find(n, "rain", 1, true) or string_find(n, "fog", 1, true) then
         for _, child in ipairs(getDescendants(inst)) do
             if isA(child, "BasePart") then
                 child.Transparency = 1
@@ -321,10 +399,9 @@ end
 
 local function processCharItem(item)
     if not item then return end
-    local n = item.Name
-    if string_find(n, "Rod") or string_find(n, "rod") or string_find(n, "Bobber") or string_find(n, "bobber") or string_find(n, "Line") or string_find(n, "line") or string_find(n, "Hook") or string_find(n, "hook") or string_find(n, "Fishing") or string_find(n, "fishing") then
-        return
-    end
+    if isBoothDescendant(item) then return end
+
+    cleanFishingEffects(item)
 
     if isA(item, "Accessory") or isA(item, "Shirt") or isA(item, "Pants") or isA(item, "ShirtGraphic") or isA(item, "CharacterMesh") or isA(item, "SurfaceAppearance") then
         pcall(destroy, item)
@@ -332,8 +409,6 @@ local function processCharItem(item)
         pcall(destroy, item)
     elseif isA(item, "SpecialMesh") and item.Parent and item.Parent.Name == "Head" then
         pcall(destroy, item)
-    elseif isA(item, "ParticleEmitter") or isA(item, "Beam") or isA(item, "Trail") or isA(item, "Highlight") or isA(item, "Light") or isA(item, "Fire") or isA(item, "Smoke") then
-        item.Enabled = false
     elseif isA(item, "BasePart") then
         item.Material = MATERIAL_SMOOTH_PLASTIC
         item.CastShadow = false
@@ -358,7 +433,7 @@ local function optimizeCharacter(char, player)
 
     local charConn = char.DescendantAdded:Connect(processCharItem)
     if player then
-        if not characterConnections[player] then characterConnections[player] = {} end
+        characterConnections[player] = characterConnections[player] or {}
         table_insert(characterConnections[player], charConn)
     else
         trackConnection(charConn)
@@ -429,6 +504,14 @@ trackConnection(Players.PlayerRemoving:Connect(function(p)
     end
 end))
 
+local backpack = LocalPlayer.Backpack
+if backpack then
+    for _, item in ipairs(getDescendants(backpack)) do
+        cleanFishingEffects(item)
+    end
+    trackConnection(backpack.DescendantAdded:Connect(cleanFishingEffects))
+end
+
 local function runAdaptiveBatch(items, handler)
     local total = #items
     if total == 0 then return end
@@ -452,21 +535,28 @@ globalEnv._FishItActiveWorker = task_spawn(function()
         trackOtherPlayer(p)
     end
 
-    local booths = findFirstChild(workspace, "Booths") or findFirstChild(workspace, "Booth")
-    if booths then
-        processedCache[booths] = true
-        for _, item in ipairs(getDescendants(booths)) do
-            processedCache[item] = true
+    local mapDescendants = getDescendants(workspace)
+    for _, item in ipairs(mapDescendants) do
+        local lowerName = string_lower(item.Name)
+        if string_find(lowerName, "booth", 1, true) then
+            boothCache[item] = true
+            for _, desc in ipairs(getDescendants(item)) do
+                boothCache[desc] = true
+            end
+        elseif string_find(lowerName, "bobber", 1, true) or string_find(lowerName, "rod", 1, true) then
+            cleanFishingEffects(item)
         end
     end
 
     for _, obj in ipairs(getChildren(workspace)) do
         local name = obj.Name
-        if INVISIBLE_RIG_EXACT[name] or string_find(name, "Rig") then
-            makeModelInvisible(obj)
-        end
-        if SAFE_TO_DESTROY[name] then
-            pcall(destroy, obj)
+        if not isBoothDescendant(obj) then
+            if INVISIBLE_RIG_EXACT[name] or string_find(name, "Rig", 1, true) then
+                makeModelInvisible(obj)
+            end
+            if SAFE_TO_DESTROY[name] then
+                pcall(destroy, obj)
+            end
         end
     end
 
@@ -475,7 +565,6 @@ globalEnv._FishItActiveWorker = task_spawn(function()
         runAdaptiveBatch(getChildren(npcFolder), cleanNPC)
     end
 
-    local mapDescendants = getDescendants(workspace)
     runAdaptiveBatch(mapDescendants, makePotato)
 
     local sounds = getDescendants(SoundService)
@@ -484,7 +573,7 @@ globalEnv._FishItActiveWorker = task_spawn(function()
     end)
 
     task_spawn(function()
-        local pgui = waitForChild(LocalPlayer, "PlayerGui", 5)
+        local pgui = LocalPlayer.PlayerGui
         if pgui then
             local function checkGui(g)
                 if PROMO_GUIS[g.Name] then
@@ -516,7 +605,16 @@ end)
 
 trackConnection(workspace.DescendantAdded:Connect(function(obj)
     if not obj or processedCache[obj] then return end
+    if isBoothDescendant(obj) then return end
     purgeDestinationBeam(obj)
+    local n = string_lower(obj.Name)
+    if string_find(n, "bobber", 1, true) or string_find(n, "rod", 1, true) then
+        cleanFishingEffects(obj)
+        for _, d in ipairs(getDescendants(obj)) do
+            cleanFishingEffects(d)
+        end
+        return
+    end
     task_wait()
     makePotato(obj)
 end))

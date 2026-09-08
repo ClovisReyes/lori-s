@@ -94,8 +94,8 @@ local Enum = Enum
 local MATERIAL_SMOOTH_PLASTIC = Enum.Material.SmoothPlastic
 local QUALITY_LEVEL_01 = Enum.QualityLevel.Level01
 
-local COLOR_AMBIENT_BRIGHT = Color3_fromRGB(200, 200, 200)
-local COLOR_FOG_COMFORT    = Color3_fromRGB(200, 200, 200)
+local COLOR_AMBIENT_BRIGHT = Color3_fromRGB(255, 255, 255)
+local COLOR_FOG_COMFORT    = Color3_fromRGB(255, 255, 255)
 local COLOR_WATER_BLUE     = Color3_fromRGB(65, 165, 230)
 local EMPTY_STR            = ""
 
@@ -316,7 +316,7 @@ local function applyFullbright()
     Lighting.FogColor = COLOR_FOG_COMFORT
     Lighting.EnvironmentDiffuseScale = 0
     Lighting.EnvironmentSpecularScale = 0
-    Lighting.ExposureCompensation = 0.35
+    Lighting.ExposureCompensation = 0.85
 end
 
 applyFullbright()
@@ -324,7 +324,18 @@ applyFullbright()
 globalEnv._FishItLightingWorker = task_spawn(function()
     while true do
         task_wait(0.2)
-        if Lighting.ClockTime ~= 14 or Lighting.Brightness ~= 0 or Lighting.Ambient ~= COLOR_AMBIENT_BRIGHT or Lighting.ExposureCompensation ~= 0.35 or Lighting.EnvironmentSpecularScale ~= 0 or Lighting.GlobalShadows ~= false then
+        for _, item in ipairs(getChildren(Lighting)) do
+            if isA(item, "Atmosphere") then
+                pcall(function()
+                    if item.Density ~= 0 or item.Haze ~= 0 or item.Glare ~= 0 then
+                        item.Density = 0
+                        item.Haze = 0
+                        item.Glare = 0
+                    end
+                end)
+            end
+        end
+        if Lighting.ClockTime ~= 14 or Lighting.Brightness ~= 0 or Lighting.Ambient ~= COLOR_AMBIENT_BRIGHT or Lighting.ExposureCompensation ~= 0.85 or Lighting.EnvironmentSpecularScale ~= 0 or Lighting.GlobalShadows ~= false or Lighting.FogEnd ~= 100000 then
             pcall(applyFullbright)
         end
     end
@@ -528,8 +539,8 @@ end
 
 local function handleWeatherInstance(inst)
     if not inst then return end
-    local name = inst.Name
-    if name == "Rain" or name == "Vynozen FogEffect" or string_find(name, "Rain") or string_find(name, "Fog") or string_find(name, "rain") or string_find(name, "fog") then
+    local name = string_lower(inst.Name)
+    if string_find(name, "rain", 1, true) or string_find(name, "fog", 1, true) or string_find(name, "storm", 1, true) or string_find(name, "snow", 1, true) or string_find(name, "blizzard", 1, true) or string_find(name, "weather", 1, true) then
         for _, child in ipairs(getDescendants(inst)) do
             if isA(child, "BasePart") then
                 pcall(function()
@@ -544,11 +555,9 @@ local function handleWeatherInstance(inst)
 end
 
 local function neutralizeWeather()
-    local fog = findFirstChild(workspace, "Vynozen FogEffect")
-    if fog then handleWeatherInstance(fog) end
-
-    local rain = findFirstChild(workspace, "Rain")
-    if rain then handleWeatherInstance(rain) end
+    for _, item in ipairs(getChildren(workspace)) do
+        handleWeatherInstance(item)
+    end
 end
 
 neutralizeWeather()

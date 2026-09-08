@@ -1,3 +1,12 @@
+if not game:IsLoaded() then
+    local loaded = false
+    local conn; conn = game.Loaded:Connect(function()
+        loaded = true
+        if conn and conn.Connected then conn:Disconnect() end
+    end)
+    repeat task.wait() until game:IsLoaded() or loaded
+end
+
 if rconsoleclear then pcall(rconsoleclear) elseif consoleclear then pcall(consoleclear) end
 
 local globalEnv = (getgenv and getgenv()) or _G
@@ -746,6 +755,13 @@ local function runAdaptiveBatch(items, handler)
 end
 
 globalEnv._FishItActiveWorker = task_spawn(function()
+    local charTimeout = 0
+    while not LocalPlayer.Character and charTimeout < 10 do
+        task_wait(0.5)
+        charTimeout = charTimeout + 0.5
+    end
+    task_wait(1)
+
     if LocalPlayer.Character then optimizeCharacter(LocalPlayer.Character, LocalPlayer) end
 
     for _, p in ipairs(Players:GetPlayers()) do

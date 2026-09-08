@@ -7,6 +7,11 @@ if globalEnv._FishItActiveWorker and typeof(globalEnv._FishItActiveWorker) == "t
     globalEnv._FishItActiveWorker = nil
 end
 
+if globalEnv._FishItLightingWorker and typeof(globalEnv._FishItLightingWorker) == "thread" then
+    pcall(task.cancel, globalEnv._FishItLightingWorker)
+    globalEnv._FishItLightingWorker = nil
+end
+
 if globalEnv._FishItCleanSky and typeof(globalEnv._FishItCleanSky) == "Instance" then
     pcall(game.Destroy, globalEnv._FishItCleanSky)
     globalEnv._FishItCleanSky = nil
@@ -89,7 +94,8 @@ local Enum = Enum
 local MATERIAL_SMOOTH_PLASTIC = Enum.Material.SmoothPlastic
 local QUALITY_LEVEL_01 = Enum.QualityLevel.Level01
 
-local COLOR_AMBIENT_BRIGHT = Color3_fromRGB(255, 255, 255)
+local COLOR_AMBIENT_BRIGHT = Color3_fromRGB(178, 178, 178)
+local COLOR_FOG_COMFORT    = Color3_fromRGB(200, 200, 200)
 local COLOR_WATER_BLUE     = Color3_fromRGB(65, 165, 230)
 local EMPTY_STR            = ""
 
@@ -196,31 +202,46 @@ local function applyFullbright()
     if cleanSky and cleanSky.SunAngularSize ~= 0 then cleanSky.SunAngularSize = 0 end
     if cleanSky and cleanSky.MoonAngularSize ~= 0 then cleanSky.MoonAngularSize = 0 end
     Lighting.ClockTime = 14
-    Lighting.Brightness = 0
+    Lighting.TimeOfDay = "14:00:00"
+    Lighting.Brightness = 1
     Lighting.GlobalShadows = false
     Lighting.Ambient = COLOR_AMBIENT_BRIGHT
     Lighting.OutdoorAmbient = COLOR_AMBIENT_BRIGHT
-    Lighting.ColorShift_Top = COLOR_AMBIENT_BRIGHT
-    Lighting.ColorShift_Bottom = COLOR_AMBIENT_BRIGHT
+    Lighting.ColorShift_Top = Color3_fromRGB(0, 0, 0)
+    Lighting.ColorShift_Bottom = Color3_fromRGB(0, 0, 0)
     Lighting.FogStart = 0
     Lighting.FogEnd = 100000
-    Lighting.FogColor = COLOR_AMBIENT_BRIGHT
+    Lighting.FogColor = COLOR_FOG_COMFORT
     Lighting.EnvironmentDiffuseScale = 0
     Lighting.EnvironmentSpecularScale = 0
-    Lighting.ExposureCompensation = 0.6
+    Lighting.ExposureCompensation = 0
 end
 
 applyFullbright()
 
 local isEnforcingLighting = false
+local function enforceFullbright()
+    if isEnforcingLighting then return end
+    isEnforcingLighting = true
+    applyFullbright()
+    isEnforcingLighting = false
+end
+
 trackConnection(Lighting.Changed:Connect(function(prop)
     if isEnforcingLighting then return end
-    if prop == "ClockTime" or prop == "Ambient" or prop == "OutdoorAmbient" or prop == "Brightness" or prop == "FogEnd" or prop == "GlobalShadows" or prop == "EnvironmentSpecularScale" then
-        isEnforcingLighting = true
-        applyFullbright()
-        isEnforcingLighting = false
+    if prop == "ClockTime" or prop == "TimeOfDay" or prop == "Ambient" or prop == "OutdoorAmbient" or prop == "Brightness" or prop == "FogEnd" or prop == "FogColor" or prop == "GlobalShadows" or prop == "EnvironmentSpecularScale" or prop == "ExposureCompensation" then
+        enforceFullbright()
     end
 end))
+
+globalEnv._FishItLightingWorker = task_spawn(function()
+    while true do
+        task_wait(3)
+        if Lighting.ClockTime ~= 14 or Lighting.Brightness ~= 1 or Lighting.GlobalShadows ~= false or Lighting.Ambient ~= COLOR_AMBIENT_BRIGHT or Lighting.ExposureCompensation ~= 0 then
+            enforceFullbright()
+        end
+    end
+end)
 
 trackConnection(Lighting.ChildAdded:Connect(function(item)
     if isA(item, "Sky") and item ~= cleanSky then

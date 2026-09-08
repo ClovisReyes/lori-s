@@ -7,6 +7,11 @@ if globalEnv._FishItActiveWorker and typeof(globalEnv._FishItActiveWorker) == "t
     globalEnv._FishItActiveWorker = nil
 end
 
+if globalEnv._FishItCleanSky and typeof(globalEnv._FishItCleanSky) == "Instance" then
+    pcall(game.Destroy, globalEnv._FishItCleanSky)
+    globalEnv._FishItCleanSky = nil
+end
+
 local function cleanupConnectionList(list)
     if not list then return end
     for _, item in pairs(list) do
@@ -79,6 +84,7 @@ local task_wait = task.wait
 local task_spawn = task.spawn
 
 local Color3_fromRGB = Color3.fromRGB
+local Instance_new = Instance.new
 local Enum = Enum
 local MATERIAL_SMOOTH_PLASTIC = Enum.Material.SmoothPlastic
 local QUALITY_LEVEL_01 = Enum.QualityLevel.Level01
@@ -136,8 +142,28 @@ pcall(function()
     workspace.InterpolationThrottling = Enum.InterpolationThrottlingMode.Enabled
 end)
 
+local cleanSky = findFirstChild(Lighting, "CleanSky")
+if not cleanSky then
+    cleanSky = Instance_new("Sky")
+    cleanSky.Name = "CleanSky"
+    cleanSky.CelestialBodiesShown = false
+    cleanSky.SunAngularSize = 0
+    cleanSky.MoonAngularSize = 0
+    cleanSky.StarCount = 0
+    cleanSky.SunTextureId = EMPTY_STR
+    cleanSky.MoonTextureId = EMPTY_STR
+    cleanSky.SkyboxBk = EMPTY_STR
+    cleanSky.SkyboxDn = EMPTY_STR
+    cleanSky.SkyboxFt = EMPTY_STR
+    cleanSky.SkyboxLf = EMPTY_STR
+    cleanSky.SkyboxRt = EMPTY_STR
+    cleanSky.SkyboxUp = EMPTY_STR
+    cleanSky.Parent = Lighting
+end
+globalEnv._FishItCleanSky = cleanSky
+
 local function disablePostEffect(item)
-    if not item or processedCache[item] then return end
+    if not item or item == cleanSky or processedCache[item] then return end
     processedCache[item] = true
     if isA(item, "PostEffect") or isA(item, "Atmosphere") or isA(item, "Clouds") then
         pcall(function()
@@ -146,7 +172,7 @@ local function disablePostEffect(item)
                 if item.Enabled then item.Enabled = false end
             end))
         end)
-    elseif isA(item, "Sky") then
+    elseif isA(item, "Sky") and item ~= cleanSky then
         pcall(destroy, item)
     end
 end
@@ -165,6 +191,10 @@ if MaterialService then
 end
 
 local function applyFullbright()
+    if cleanSky and cleanSky.Parent ~= Lighting then cleanSky.Parent = Lighting end
+    if cleanSky and cleanSky.CelestialBodiesShown then cleanSky.CelestialBodiesShown = false end
+    if cleanSky and cleanSky.SunAngularSize ~= 0 then cleanSky.SunAngularSize = 0 end
+    if cleanSky and cleanSky.MoonAngularSize ~= 0 then cleanSky.MoonAngularSize = 0 end
     Lighting.ClockTime = 14
     Lighting.Brightness = 0
     Lighting.GlobalShadows = false
@@ -192,7 +222,13 @@ trackConnection(Lighting.Changed:Connect(function(prop)
     end
 end))
 
-trackConnection(Lighting.ChildAdded:Connect(disablePostEffect))
+trackConnection(Lighting.ChildAdded:Connect(function(item)
+    if isA(item, "Sky") and item ~= cleanSky then
+        pcall(destroy, item)
+    else
+        disablePostEffect(item)
+    end
+end))
 
 local camConn
 local function secureCamera(cam)
@@ -220,6 +256,22 @@ if terrain then
     if sethiddenproperty then
         pcall(function() sethiddenproperty(terrain, "Decoration", false) end)
     end
+
+    local function purgeClouds(item)
+        if isA(item, "Clouds") then
+            item.Enabled = false
+            pcall(function()
+                item.Cover = 0
+                item.Density = 0
+            end)
+            pcall(destroy, item)
+        end
+    end
+
+    for _, item in ipairs(getChildren(terrain)) do
+        purgeClouds(item)
+    end
+    trackConnection(terrain.ChildAdded:Connect(purgeClouds))
 end
 
 local function isBoothDescendant(obj)
@@ -595,6 +647,15 @@ end)
 
 trackConnection(workspace.DescendantAdded:Connect(function(obj)
     if not obj or processedCache[obj] then return end
+    if isA(obj, "Clouds") then
+        obj.Enabled = false
+        pcall(function()
+            obj.Cover = 0
+            obj.Density = 0
+        end)
+        pcall(destroy, obj)
+        return
+    end
     if isBoothDescendant(obj) then return end
     purgeDestinationBeam(obj)
     local n = string_lower(obj.Name)

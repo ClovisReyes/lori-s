@@ -1,6 +1,6 @@
-if rconsoleclear then rconsoleclear() end
+if rconsoleclear then pcall(rconsoleclear) end
 
-local globalEnv = getgenv()
+local globalEnv = (getgenv and getgenv()) or _G
 
 if globalEnv._FishItActiveWorker and typeof(globalEnv._FishItActiveWorker) == "thread" then
     pcall(task.cancel, globalEnv._FishItActiveWorker)
@@ -49,6 +49,10 @@ local SoundService = getService(game, "SoundService")
 local MaterialService = getService(game, "MaterialService")
 
 local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then
+    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    LocalPlayer = Players.LocalPlayer
+end
 
 local isA = game.IsA
 local findFirstChild = game.FindFirstChild
@@ -127,8 +131,10 @@ local PROMO_GUIS = {
     ["EggIndicator"]           = true,
 }
 
-settings().Rendering.QualityLevel = QUALITY_LEVEL_01
-workspace.InterpolationThrottling = Enum.InterpolationThrottlingMode.Enabled
+pcall(function()
+    settings().Rendering.QualityLevel = QUALITY_LEVEL_01
+    workspace.InterpolationThrottling = Enum.InterpolationThrottlingMode.Enabled
+end)
 
 local cleanSky = findFirstChild(Lighting, "CleanSky")
 if not cleanSky then
@@ -148,7 +154,7 @@ if not cleanSky then
 end
 
 local function disablePostEffect(item)
-    if not item or processedCache[item] then return end
+    if not item or item == cleanSky or processedCache[item] then return end
     processedCache[item] = true
     if isA(item, "PostEffect") or isA(item, "Atmosphere") then
         item.Enabled = false
@@ -156,8 +162,11 @@ local function disablePostEffect(item)
             if item.Enabled then item.Enabled = false end
         end))
     elseif isA(item, "Clouds") then
+        item.Enabled = false
+        item.Cover = 0
+        item.Density = 0
         pcall(destroy, item)
-    elseif isA(item, "Sky") and item.Name ~= "CleanSky" then
+    elseif isA(item, "Sky") and item ~= cleanSky then
         pcall(destroy, item)
     end
 end
@@ -166,7 +175,10 @@ for _, item in ipairs(getChildren(Lighting)) do
     disablePostEffect(item)
 end
 
-MaterialService.Use2022Materials = false
+pcall(function()
+    MaterialService.Use2022Materials = false
+end)
+
 for _, item in ipairs(getChildren(MaterialService)) do
     if isA(item, "MaterialVariant") then
         pcall(destroy, item)
@@ -174,6 +186,10 @@ for _, item in ipairs(getChildren(MaterialService)) do
 end
 
 local function applyFullbright()
+    if cleanSky.Parent ~= Lighting then cleanSky.Parent = Lighting end
+    if cleanSky.CelestialBodiesShown then cleanSky.CelestialBodiesShown = false end
+    if cleanSky.SunAngularSize ~= 0 then cleanSky.SunAngularSize = 0 end
+    if cleanSky.MoonAngularSize ~= 0 then cleanSky.MoonAngularSize = 0 end
     Lighting.ClockTime = 14
     Lighting.Brightness = 0
     Lighting.GlobalShadows = false
@@ -231,6 +247,9 @@ end
 
 local function purgeClouds(item)
     if isA(item, "Clouds") then
+        item.Enabled = false
+        item.Cover = 0
+        item.Density = 0
         pcall(destroy, item)
     end
 end
@@ -325,7 +344,7 @@ local function purgeDestinationBeam(item)
 end
 
 local function makePotato(obj)
-    if not obj or processedCache[obj] then return end
+    if not obj or not obj.Parent or processedCache[obj] then return end
     if isProtected(obj) then return end
     processedCache[obj] = true
 
@@ -346,6 +365,11 @@ local function makePotato(obj)
     elseif isA(obj, "PointLight") or isA(obj, "SpotLight") or isA(obj, "SurfaceLight") then
         obj.Enabled = false
     elseif isA(obj, "SurfaceAppearance") then
+        pcall(destroy, obj)
+    elseif isA(obj, "Clouds") then
+        obj.Enabled = false
+        obj.Cover = 0
+        obj.Density = 0
         pcall(destroy, obj)
     elseif isA(obj, "BillboardGui") or isA(obj, "SurfaceGui") then
         obj.Enabled = false
@@ -504,7 +528,7 @@ trackConnection(Players.PlayerRemoving:Connect(function(p)
     end
 end))
 
-local backpack = LocalPlayer.Backpack
+local backpack = findFirstChildOfClass(LocalPlayer, "Backpack")
 if backpack then
     for _, item in ipairs(getDescendants(backpack)) do
         cleanFishingEffects(item)
@@ -519,7 +543,9 @@ local function runAdaptiveBatch(items, handler)
     local start = clock()
     for i = 1, total do
         local obj = items[i]
-        if obj then handler(obj) end
+        if obj and obj.Parent then
+            pcall(handler, obj)
+        end
 
         if (clock() - start) >= FRAME_BUDGET_SEC then
             task_wait()
@@ -533,19 +559,6 @@ globalEnv._FishItActiveWorker = task_spawn(function()
 
     for _, p in ipairs(Players:GetPlayers()) do
         trackOtherPlayer(p)
-    end
-
-    local mapDescendants = getDescendants(workspace)
-    for _, item in ipairs(mapDescendants) do
-        local lowerName = string_lower(item.Name)
-        if string_find(lowerName, "booth", 1, true) then
-            boothCache[item] = true
-            for _, desc in ipairs(getDescendants(item)) do
-                boothCache[desc] = true
-            end
-        elseif string_find(lowerName, "bobber", 1, true) or string_find(lowerName, "rod", 1, true) then
-            cleanFishingEffects(item)
-        end
     end
 
     for _, obj in ipairs(getChildren(workspace)) do
@@ -565,6 +578,26 @@ globalEnv._FishItActiveWorker = task_spawn(function()
         runAdaptiveBatch(getChildren(npcFolder), cleanNPC)
     end
 
+    local mapDescendants = getDescendants(workspace)
+    for _, item in ipairs(mapDescendants) do
+        if isA(item, "Clouds") then
+            item.Enabled = false
+            item.Cover = 0
+            item.Density = 0
+            pcall(destroy, item)
+        else
+            local lowerName = string_lower(item.Name)
+            if string_find(lowerName, "booth", 1, true) then
+                boothCache[item] = true
+                for _, desc in ipairs(getDescendants(item)) do
+                    boothCache[desc] = true
+                end
+            elseif string_find(lowerName, "bobber", 1, true) or string_find(lowerName, "rod", 1, true) then
+                cleanFishingEffects(item)
+            end
+        end
+    end
+
     runAdaptiveBatch(mapDescendants, makePotato)
 
     local sounds = getDescendants(SoundService)
@@ -573,7 +606,7 @@ globalEnv._FishItActiveWorker = task_spawn(function()
     end)
 
     task_spawn(function()
-        local pgui = LocalPlayer.PlayerGui
+        local pgui = findFirstChildOfClass(LocalPlayer, "PlayerGui") or findFirstChild(LocalPlayer, "PlayerGui")
         if pgui then
             local function checkGui(g)
                 if PROMO_GUIS[g.Name] then
@@ -605,6 +638,13 @@ end)
 
 trackConnection(workspace.DescendantAdded:Connect(function(obj)
     if not obj or processedCache[obj] then return end
+    if isA(obj, "Clouds") then
+        obj.Enabled = false
+        obj.Cover = 0
+        obj.Density = 0
+        pcall(destroy, obj)
+        return
+    end
     if isBoothDescendant(obj) then return end
     purgeDestinationBeam(obj)
     local n = string_lower(obj.Name)
@@ -636,15 +676,17 @@ if vehFolder then
 end
 
 if hookfunction and newcclosure and not globalEnv._FishItHooked then
-    globalEnv._FishItHooked = true
-    local oldPrint; oldPrint = hookfunction(print, newcclosure(function(...)
-        local firstArg = select(1, ...)
-        if tostring(firstArg) == "No HRP" then return end
-        return oldPrint(...)
-    end))
-    local oldWarn; oldWarn = hookfunction(warn, newcclosure(function(...)
-        local firstArg = select(1, ...)
-        if tostring(firstArg) == "No HRP" then return end
-        return oldWarn(...)
-    end))
+    pcall(function()
+        globalEnv._FishItHooked = true
+        local oldPrint; oldPrint = hookfunction(print, newcclosure(function(...)
+            local firstArg = select(1, ...)
+            if tostring(firstArg) == "No HRP" then return end
+            return oldPrint(...)
+        end))
+        local oldWarn; oldWarn = hookfunction(warn, newcclosure(function(...)
+            local firstArg = select(1, ...)
+            if tostring(firstArg) == "No HRP" then return end
+            return oldWarn(...)
+        end))
+    end)
 end
